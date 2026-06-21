@@ -17,14 +17,21 @@ from motor import exportar as ex
 
 # Modos de filtro disponibles (el primero es el que se muestra al abrir).
 MODOS = [
+    "Reponer ya (stock 0 o por agotarse)",
+    "Solo quiebre (stock 0)",
     "Top 50 más vendidos",
-    "Top 20 más vendidos",
-    "Top 100 más vendidos",
     "Clase A",
-    "Clase B",
-    "Clase C",
+    "Sin dato de stock",
     "Todos",
 ]
+
+# Texto e ícono que se muestra en la columna "Estado".
+URG_TXT = {
+    "QUIEBRE": "⛔ Quiebre",
+    "POR AGOTARSE": "⚠ Por agotarse",
+    "SIN DATO": "❔ Sin dato",
+    "OK": "OK",
+}
 
 AZUL = "#1F4E78"
 GRIS = "#F2F6FA"
@@ -41,15 +48,22 @@ def fmt_clp(v):
 
 
 def filtrar(ordenes, modo, texto=""):
-    """Aplica el modo (top N / clase) y la búsqueda de texto sobre las órdenes."""
+    """Aplica el modo elegido y la búsqueda de texto sobre las órdenes."""
     df = ordenes.sort_values("VENTA_TOTAL", ascending=False)  # más vendidos primero
+    m = modo.lower()
 
-    if modo.startswith("Top"):
+    if modo.startswith("Reponer"):
+        df = df[df["URGENCIA"].isin(["QUIEBRE", "POR AGOTARSE"])]
+    elif "quiebre" in m:
+        df = df[df["URGENCIA"] == "QUIEBRE"]
+    elif "sin dato" in m:
+        df = df[df["URGENCIA"] == "SIN DATO"]
+    elif modo.startswith("Top"):
         n = int("".join(c for c in modo if c.isdigit()))
         df = df.head(n)
     elif modo.startswith("Clase"):
-        letra = modo.strip()[-1]
-        df = df[df["ABC"] == letra]
+        df = df[df["ABC"] == modo.strip()[-1]]
+    # "Todos": no se filtra nada
 
     texto = (texto or "").strip().upper()
     if texto:
@@ -62,14 +76,14 @@ def filtrar(ordenes, modo, texto=""):
 # --- La ventana -------------------------------------------------------------
 class GestorApp:
     COLS = [
-        ("CODIGO", "Código", 110, "w"),
-        ("PRODUCTO", "Producto", 330, "w"),
-        ("ABC", "ABC", 45, "center"),
-        ("XYZ", "XYZ", 45, "center"),
+        ("CODIGO", "Código", 105, "w"),
+        ("PRODUCTO", "Producto", 300, "w"),
+        ("ABC", "ABC", 42, "center"),
+        ("URGENCIA", "Estado", 120, "center"),
+        ("STOCK_ACTUAL", "Stock", 70, "e"),
         ("PRONOSTICO_MENSUAL", "Pronóstico/mes", 95, "e"),
-        ("STOCK_ACTUAL", "Stock", 80, "e"),
         ("SUGERIDO_PEDIR", "Sugerido pedir", 100, "e"),
-        ("MONTO_ESTIMADO", "Monto estimado", 120, "e"),
+        ("MONTO_ESTIMADO", "Monto estimado", 115, "e"),
     ]
 
     def __init__(self, root):
@@ -103,7 +117,7 @@ class GestorApp:
         head.pack(fill="x")
         tk.Label(head, text="🛒  Gestor de Compras 2.0", bg=AZUL, fg="white",
                  font=("Segoe UI", 15, "bold")).pack(side="left", padx=16, pady=10)
-        tk.Label(head, text="Órdenes de compra sugeridas — foco en más vendidos",
+        tk.Label(head, text="Productos a reponer — stock 0 o por agotarse",
                  bg=AZUL, fg="#CFE0F1", font=("Segoe UI", 9)).pack(side="left", pady=10)
 
     def _controles(self):
@@ -141,7 +155,11 @@ class GestorApp:
         for key, titulo, ancho, anchor in self.COLS:
             self.tree.heading(key, text=titulo)
             self.tree.column(key, width=ancho, anchor=anchor, stretch=(key == "PRODUCTO"))
+        # Colores por urgencia (para que salte a la vista qué reponer).
         self.tree.tag_configure("impar", background=GRIS)
+        self.tree.tag_configure("quiebre", background="#F8D2D2")    # rojo suave
+        self.tree.tag_configure("agotarse", background="#FCEFC7")   # amarillo suave
+        self.tree.tag_configure("sindato", background="#E9ECEF")    # gris
 
         sb = ttk.Scrollbar(cont, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
@@ -190,17 +208,22 @@ class GestorApp:
         self._vista = df  # lo que se ve = lo que se exporta
 
         self.tree.delete(*self.tree.get_children())
+        tag_urg = {"QUIEBRE": "quiebre", "POR AGOTARSE": "agotarse", "SIN DATO": "sindato"}
         for i, (_, fila) in enumerate(df.iterrows()):
+            urg = fila["URGENCIA"]
+            # Si no conocemos el stock, mostramos "?" en vez de un 0 engañoso.
+            stock_txt = fmt_num(fila["STOCK_ACTUAL"]) if fila["STOCK_CONOCIDO"] else "?"
             valores = (
                 fila["CODIGO"],
                 str(fila["PRODUCTO"])[:60],
-                fila["ABC"], fila["XYZ"],
+                fila["ABC"],
+                URG_TXT.get(urg, urg),
+                stock_txt,
                 fmt_num(fila["PRONOSTICO_MENSUAL"]),
-                fmt_num(fila["STOCK_ACTUAL"]),
                 fmt_num(fila["SUGERIDO_PEDIR"]),
                 fmt_clp(fila["MONTO_ESTIMADO"]),
             )
-            tag = "impar" if i % 2 else "par"
+            tag = tag_urg.get(urg, "impar" if i % 2 else "par")
             self.tree.insert("", "end", values=valores, tags=(tag,))
 
         monto = df["MONTO_ESTIMADO"].sum()

@@ -30,5 +30,9 @@ FACTOR_SEGURIDAD = {"X": 1.0, "Y": 1.5, "Z": 2.0}
 CORTE_A = 0.80
 CORTE_B = 0.95
 
+# Un producto está "POR AGOTARSE" si su stock cubre menos de estos meses de
+# demanda. 0.5 ≈ menos de dos semanas de venta en bodega. (Stock 0 = "QUIEBRE".)
+UMBRAL_COBERTURA = 0.5
+
 # Carpeta donde se guardan las órdenes generadas.
 CARPETA_SALIDAS = Path(__file__).parent / "salidas"

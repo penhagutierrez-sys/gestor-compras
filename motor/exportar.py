@@ -15,9 +15,11 @@ COLUMNAS = {
     "RUBRO": "Rubro",
     "MARCA": "Marca",
     "ABC": "ABC",
+    "URGENCIA": "Estado",
     "XYZ": "XYZ",
     "PRONOSTICO_MENSUAL": "Pronóstico/mes",
     "STOCK_ACTUAL": "Stock actual",
+    "COBERTURA_MESES": "Cobertura (meses)",
     "SUGERIDO_PEDIR": "Sugerido pedir",
     "COSTO_UNIT": "Costo unit.",
     "MONTO_ESTIMADO": "Monto estimado",
@@ -33,6 +35,7 @@ def exportar_excel(ordenes, ruta=None):
 
     tabla = ordenes[list(COLUMNAS.keys())].copy()
     tabla["PRONOSTICO_MENSUAL"] = tabla["PRONOSTICO_MENSUAL"].round(1)
+    tabla["COBERTURA_MESES"] = tabla["COBERTURA_MESES"].round(2)
     tabla = tabla.rename(columns=COLUMNAS)
 
     tabla.to_excel(ruta, index=False, sheet_name="OC sugeridas")
