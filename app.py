@@ -25,12 +25,20 @@ MODOS = [
     "Todos",
 ]
 
-# Texto e ícono que se muestra en la columna "Estado".
+# Texto que se muestra en la columna "Estado" (el color va en el fondo de la fila).
 URG_TXT = {
-    "QUIEBRE": "⛔ Quiebre",
-    "POR AGOTARSE": "⚠ Por agotarse",
-    "SIN DATO": "❔ Sin dato",
+    "QUIEBRE": "Quiebre",
+    "POR AGOTARSE": "Por agotarse",
+    "SIN DATO": "Sin dato",
     "OK": "OK",
+}
+
+# Colores del semáforo por estado (chip de la barra superior + fondo de fila).
+SEMAFORO = {
+    "QUIEBRE": "#E74C3C",       # rojo
+    "POR AGOTARSE": "#F1C40F",  # amarillo
+    "OK": "#2ECC71",            # verde
+    "SIN DATO": "#AEB6BD",      # gris
 }
 
 AZUL = "#1F4E78"
@@ -96,6 +104,7 @@ class GestorApp:
         self._estilo()
         self._cabecera()
         self._controles()
+        self._semaforo()
         self._tabla()
         self._barra_estado()
 
@@ -146,6 +155,20 @@ class GestorApp:
                                  padding=(14, 0))
         self.resumen.pack(fill="x")
 
+    def _semaforo(self):
+        """Barra tipo semáforo con el total por estado (bloque de color + conteo)."""
+        bar = ttk.Frame(self.root, padding=(12, 4))
+        bar.pack(fill="x")
+        ttk.Label(bar, text="Semáforo:", font=("Segoe UI", 9, "bold")).pack(side="left")
+        self.sem = {}
+        for key, txt in (("QUIEBRE", "en quiebre"), ("POR AGOTARSE", "por agotarse"),
+                         ("OK", "ok"), ("SIN DATO", "sin dato")):
+            tk.Label(bar, text="   ", bg=SEMAFORO[key], relief="ridge", bd=1).pack(
+                side="left", padx=(14, 5))
+            lbl = ttk.Label(bar, text=f"0 {txt}", font=("Segoe UI", 9))
+            lbl.pack(side="left")
+            self.sem[key] = (lbl, txt)
+
     def _tabla(self):
         cont = ttk.Frame(self.root, padding=(12, 6))
         cont.pack(fill="both", expand=True)
@@ -155,11 +178,12 @@ class GestorApp:
         for key, titulo, ancho, anchor in self.COLS:
             self.tree.heading(key, text=titulo)
             self.tree.column(key, width=ancho, anchor=anchor, stretch=(key == "PRODUCTO"))
-        # Colores por urgencia (para que salte a la vista qué reponer).
+        # Colores de semáforo por fila (para que salte a la vista qué reponer).
         self.tree.tag_configure("impar", background=GRIS)
-        self.tree.tag_configure("quiebre", background="#F8D2D2")    # rojo suave
-        self.tree.tag_configure("agotarse", background="#FCEFC7")   # amarillo suave
-        self.tree.tag_configure("sindato", background="#E9ECEF")    # gris
+        self.tree.tag_configure("quiebre", background="#F5B7B1")    # rojo
+        self.tree.tag_configure("agotarse", background="#FBE7A1")   # amarillo
+        self.tree.tag_configure("ok", background="#ABEBC6")         # verde
+        self.tree.tag_configure("sindato", background="#E5E8E8")    # gris
 
         sb = ttk.Scrollbar(cont, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
@@ -193,6 +217,10 @@ class GestorApp:
         self.ordenes = ordenes
         self.btn_generar.config(state="normal")
         self.btn_export.config(state="normal")
+        # Conteo del semáforo (sobre el total de órdenes).
+        vc = ordenes["URGENCIA"].value_counts()
+        for key, (lbl, txt) in self.sem.items():
+            lbl.config(text=f"{int(vc.get(key, 0)):,} {txt}")
         self._aplicar_filtro()
         self._status(f"Listo — {len(ordenes):,} productos a pedir en total.")
 
@@ -208,7 +236,8 @@ class GestorApp:
         self._vista = df  # lo que se ve = lo que se exporta
 
         self.tree.delete(*self.tree.get_children())
-        tag_urg = {"QUIEBRE": "quiebre", "POR AGOTARSE": "agotarse", "SIN DATO": "sindato"}
+        tag_urg = {"QUIEBRE": "quiebre", "POR AGOTARSE": "agotarse",
+                   "OK": "ok", "SIN DATO": "sindato"}
         for i, (_, fila) in enumerate(df.iterrows()):
             urg = fila["URGENCIA"]
             # Si no conocemos el stock, mostramos "?" en vez de un 0 engañoso.
