@@ -10,9 +10,12 @@ from pathlib import Path
 RUTA_VENTAS = r"C:\Users\Thinkpad\OneDrive - FERRETERIA SOLUCENTER LTDA\Escritorio\BBDD_Ventas_Reclasificada_2026.xlsx"
 HOJA_VENTAS = "BD Vta"
 
-# Stock actual: pendiente re-exportar desde Power BI con datos reales.
-# Si se deja en None, el motor sugiere SOLO por demanda (sin restar stock).
-RUTA_STOCK = None  # ej: r"C:\Users\Thinkpad\Downloads\stock.csv"
+# Stock actual (export de Power BI). Si se deja en None, el motor sugiere
+# SOLO por demanda (sin restar stock).
+# NOTA: este export trae NOMBRE_PRODUCTO pero no CODIGO -> se cruza por nombre
+# (provisional). Lo ideal es re-exportar incluyendo la columna de código.
+RUTA_STOCK = r"C:\Users\Thinkpad\Downloads\data (1).xlsx"
+HOJA_STOCK = "Export"
 
 # --- Parámetros del motor ---
 # Cuántos meses de demanda queremos tener cubiertos en stock.

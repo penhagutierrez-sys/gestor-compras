@@ -6,6 +6,8 @@ SEPARADOS en dos columnas, una por año (..._2025 y ..._2026). Nunca vienen las
 dos a la vez (si la venta fue en 2025, la de 2026 está en 0 y viceversa).
 Aquí las UNIMOS en una sola columna "limpia" para poder trabajar cómodos.
 """
+import re
+
 import pandas as pd
 
 # Traducción del nombre del mes (como viene en el Excel) a número de mes.
@@ -53,3 +55,44 @@ def resumen_mensual(df):
         .rename(columns={"CANTIDAD": "CANTIDAD_MES"})
     )
     return g
+
+
+# ---------------------------------------------------------------------------
+# STOCK
+# ---------------------------------------------------------------------------
+def _normalizar_nombre(s):
+    """Deja el nombre 'parejo' para poder compararlo: mayúsculas, sin espacios dobles."""
+    s = str(s).strip().upper()
+    return re.sub(r"\s+", " ", s)
+
+
+def cargar_stock(ruta, hoja="Export"):
+    """
+    Lee el export de stock de Power BI y devuelve el stock TOTAL por producto.
+    El export viene desglosado por bodega y con filas de subtotal ("Total"),
+    así que las quitamos y sumamos el stock de todas las bodegas por producto.
+    OJO: este export no trae CODIGO, así que devolvemos la llave por NOMBRE.
+    """
+    s = pd.read_excel(ruta, sheet_name=hoja)
+    s = s[s["NOMBRE_PRODUCTO"].notna()]
+    s = s[~s["NOMBRE_PRODUCTO"].astype(str).str.strip().str.lower().eq("total")]
+    s["STOCK_FISICO"] = pd.to_numeric(s["STOCK_FISICO"], errors="coerce").fillna(0)
+    s["NOMBRE_NORM"] = s["NOMBRE_PRODUCTO"].map(_normalizar_nombre)
+    return (
+        s.groupby("NOMBRE_NORM")["STOCK_FISICO"]
+        .sum()
+        .rename("STOCK_ACTUAL")
+        .reset_index()
+    )
+
+
+def stock_por_codigo(stock_nombre, productos):
+    """
+    Convierte el stock-por-nombre en stock-por-CODIGO, usando la tabla de
+    productos (que sí tiene CODIGO y PRODUCTO) como 'puente'.
+    Devuelve un DataFrame [CODIGO, STOCK_ACTUAL] (NaN donde no se encontró nombre).
+    """
+    p = productos[["CODIGO", "PRODUCTO"]].copy()
+    p["NOMBRE_NORM"] = p["PRODUCTO"].map(_normalizar_nombre)
+    cruce = p.merge(stock_nombre, on="NOMBRE_NORM", how="left")
+    return cruce[["CODIGO", "STOCK_ACTUAL"]]

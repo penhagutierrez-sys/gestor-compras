@@ -20,12 +20,19 @@ def main():
     print(f"   {len(res):,} productos analizados.\n")
 
     print("3) Generando órdenes de compra sugeridas...")
-    stock = None  # cuando tengamos el stock real, se carga aquí
+    stock = None
+    if config.RUTA_STOCK:
+        stock_nombre = cd.cargar_stock(config.RUTA_STOCK, config.HOJA_STOCK)
+        stock = cd.stock_por_codigo(stock_nombre, res)
+        con_stock = stock["STOCK_ACTUAL"].notna().sum()
+        print(f"   Stock cargado: {con_stock:,}/{len(stock):,} productos cruzados "
+              f"({con_stock/len(stock)*100:.0f}%) — el resto queda en 0.")
     ordenes = oc.generar_ordenes(res, stock=stock)
     monto = ordenes["MONTO_ESTIMADO"].sum()
     print(f"   {len(ordenes):,} productos a pedir | monto estimado: ${monto:,.0f}")
     if stock is None:
-        print("   (sin stock todavía: sugerencia por demanda pura)\n")
+        print("   (sin stock: sugerencia por demanda pura)")
+    print()
 
     print("4) Exportando a Excel...")
     ruta = ex.exportar_excel(ordenes)
