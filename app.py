@@ -224,6 +224,18 @@ class GestorApp:
 def main():
     root = tk.Tk()
     GestorApp(root)
+
+    # Centrar la ventana y traerla al frente (a veces abre detrás de otras).
+    root.update_idletasks()
+    w, h = 1040, 640
+    x = max(0, (root.winfo_screenwidth() - w) // 2)
+    y = max(0, (root.winfo_screenheight() - h) // 3)
+    root.geometry(f"{w}x{h}+{x}+{y}")
+    root.lift()
+    root.attributes("-topmost", True)
+    root.after(900, lambda: root.attributes("-topmost", False))
+    root.focus_force()
+
     root.mainloop()
 
 
