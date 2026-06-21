@@ -1,29 +1,42 @@
 """
-Punto de entrada del motor (versión de prueba).
-Por ahora solo CARGA los datos y muestra un resumen, para verificar que todo
-lee bien. En los siguientes pasos le sumamos ABC/XYZ, pronóstico y las OCs.
+Punto de entrada del motor.
+Carga ventas -> analiza (ABC/XYZ/pronóstico) -> genera OCs -> exporta a Excel.
 """
+import pandas as pd
 import config
 from motor import cargar_datos as cd
+from motor import analisis as an
+from motor import ordenes as oc
+from motor import exportar as ex
 
 
 def main():
-    print("Cargando ventas... (puede tardar unos segundos)\n")
+    print("1) Cargando ventas... (puede tardar unos segundos)")
     df = cd.cargar_ventas(config.RUTA_VENTAS, config.HOJA_VENTAS)
+    print(f"   {len(df):,} filas | {df['CODIGO'].nunique():,} productos.\n")
 
-    print(f"OK - {len(df):,} filas  |  {df['CODIGO'].nunique():,} productos distintos")
-    meses = sorted(int(m) for m in df["MES_NUM"].dropna().unique())
-    print(f"Años: {sorted(df['Año'].dropna().unique())}  |  Meses presentes: {meses}")
+    print("2) Analizando (ABC / XYZ / pronóstico)...")
+    res = an.analizar(df)
+    print(f"   {len(res):,} productos analizados.\n")
 
-    resumen = cd.resumen_mensual(df)
+    print("3) Generando órdenes de compra sugeridas...")
+    stock = None  # cuando tengamos el stock real, se carga aquí
+    ordenes = oc.generar_ordenes(res, stock=stock)
+    monto = ordenes["MONTO_ESTIMADO"].sum()
+    print(f"   {len(ordenes):,} productos a pedir | monto estimado: ${monto:,.0f}")
+    if stock is None:
+        print("   (sin stock todavía: sugerencia por demanda pura)\n")
 
-    # Como ejemplo, mostramos el producto que más vendió (en $) y su demanda mensual.
-    ventas_por_prod = df.groupby("CODIGO")["VENTA"].sum()
-    top = ventas_por_prod.idxmax()
-    nombre = df.loc[df["CODIGO"] == top, "PRODUCTO"].iloc[0]
-    print(f"\nEjemplo — producto top en ventas: {top}  {nombre}")
-    print("Demanda mensual (unidades):")
-    print(resumen[resumen["CODIGO"] == top].to_string(index=False))
+    print("4) Exportando a Excel...")
+    ruta = ex.exportar_excel(ordenes)
+    print(f"   Archivo creado: {ruta}\n")
+
+    # Vista rápida de las primeras OCs (clase A).
+    print("== Primeras OCs sugeridas (clase A) ==")
+    cols = ["CODIGO", "PRODUCTO", "ABC", "XYZ", "SUGERIDO_PEDIR", "MONTO_ESTIMADO"]
+    vista = ordenes.head(8)[cols].copy()
+    vista["PRODUCTO"] = vista["PRODUCTO"].str.slice(0, 36)
+    print(vista.to_string(index=False))
 
 
 if __name__ == "__main__":
