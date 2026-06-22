@@ -261,13 +261,16 @@ class GestorApp:
         self.kpi = {}
         for i, (key, label, style, espct) in enumerate(self.KPIS):
             cell = tk.Frame(grid, bg=RAIL_BG)
-            cell.grid(row=i // 2, column=i % 2, sticky="nsew", pady=(0, 6))
-            meter = tb.Meter(cell, metersize=74, amountused=0, amounttotal=100,
-                             subtext=label, bootstyle=style,
-                             textright="%" if espct else "", stripethickness=6,
-                             subtextfont=(FONT, 7))
+            cell.grid(row=i // 2, column=i % 2, sticky="nsew", pady=(0, 10))
+            # Aro sólido y fino; el número va solo (sin etiqueta encima).
+            meter = tb.Meter(cell, metersize=84, amountused=0, amounttotal=100,
+                             bootstyle=style, textright="%" if espct else "",
+                             meterthickness=7, stripethickness=0,
+                             textfont=(FONT_SEMI, 15))
             meter.pack()
-            det = tk.Label(cell, text="—", bg=RAIL_BG, fg=SLATE, font=(FONT_SEMI, 8))
+            tk.Label(cell, text=label, bg=RAIL_BG, fg=INK,
+                     font=(FONT_SEMI, 8)).pack(pady=(4, 0))
+            det = tk.Label(cell, text="—", bg=RAIL_BG, fg=SLATE, font=(FONT, 8))
             det.pack()
             self.kpi[key] = {"meter": meter, "det": det, "pct": espct}
 
@@ -414,7 +417,7 @@ class GestorApp:
         self._set_kpi("inmovil", round((val_sobre + val_dead) / cap_total * 100),
                       fmt_millones(val_sobre + val_dead))
         self._set_kpi("reponer", len(rep),
-                      fmt_millones(rep["MONTO_ESTIMADO"].sum()) + " compra",
+                      fmt_millones(rep["MONTO_ESTIMADO"].sum()),
                       total=max(len(df), 1))
         self._set_kpi("sobre", round(val_sobre / cap_total * 100), fmt_millones(val_sobre))
         self._set_kpi("dead", round(val_dead / cap_total * 100), fmt_millones(val_dead))
