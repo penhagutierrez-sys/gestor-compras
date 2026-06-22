@@ -64,8 +64,11 @@ def cap(x):
     return "" if s.lower() == "nan" else s.title()
 
 
-def filtrar(ordenes, modo, texto=""):
-    """Aplica el modo elegido y la búsqueda de texto sobre las órdenes."""
+TODAS_FAMILIAS = "Todas las familias"
+
+
+def filtrar(ordenes, modo, texto="", familia=None):
+    """Aplica el modo, la familia y la búsqueda de texto sobre las órdenes."""
     df = ordenes.sort_values("VENTA_TOTAL", ascending=False)  # más vendidos primero
     m = modo.lower()
 
@@ -81,6 +84,10 @@ def filtrar(ordenes, modo, texto=""):
     elif modo.startswith("Clase"):
         df = df[df["ABC"] == modo.strip()[-1]]
     # "Todos": no se filtra nada
+
+    # Filtro por familia (desplegable de arriba).
+    if familia and familia != TODAS_FAMILIAS:
+        df = df[df["FAMILIA"].astype(str).str.upper() == familia.upper()]
 
     texto = (texto or "").strip().upper()
     if texto:
@@ -181,21 +188,35 @@ class GestorApp:
 
     # ---- toolbar (filtro + búsqueda + contador) ----
     def _toolbar(self):
-        bar = tb.Frame(self.root, padding=(20, 8))
-        bar.pack(fill="x")
-        tb.Label(bar, text="Ver", bootstyle="secondary").pack(side="left", padx=(0, 6))
-        self.cmb = tb.Combobox(bar, values=MODOS, state="readonly", width=30,
+        wrap = tb.Frame(self.root, padding=(20, 8))
+        wrap.pack(fill="x")
+
+        # Fila 1: filtros (Ver + Familia).
+        fila1 = tb.Frame(wrap)
+        fila1.pack(fill="x")
+        tb.Label(fila1, text="Ver", bootstyle="secondary").pack(side="left", padx=(0, 6))
+        self.cmb = tb.Combobox(fila1, values=MODOS, state="readonly", width=30,
                                bootstyle="primary")
         self.cmb.current(0)
         self.cmb.pack(side="left", padx=(0, 18))
         self.cmb.bind("<<ComboboxSelected>>", lambda e: self._aplicar_filtro())
 
-        tb.Label(bar, text="Buscar", bootstyle="secondary").pack(side="left", padx=(0, 6))
-        self.busqueda = tb.Entry(bar, width=32)
+        tb.Label(fila1, text="Familia", bootstyle="secondary").pack(side="left", padx=(0, 6))
+        self.cmb_familia = tb.Combobox(fila1, values=[TODAS_FAMILIAS], state="readonly",
+                                       width=30, bootstyle="primary")
+        self.cmb_familia.current(0)
+        self.cmb_familia.pack(side="left")
+        self.cmb_familia.bind("<<ComboboxSelected>>", lambda e: self._aplicar_filtro())
+
+        # Fila 2: búsqueda + contador.
+        fila2 = tb.Frame(wrap)
+        fila2.pack(fill="x", pady=(8, 0))
+        tb.Label(fila2, text="Buscar", bootstyle="secondary").pack(side="left", padx=(0, 6))
+        self.busqueda = tb.Entry(fila2, width=40)
         self.busqueda.pack(side="left")
         self.busqueda.bind("<KeyRelease>", lambda e: self._aplicar_filtro())
 
-        self.resumen = tb.Label(bar, text="", font=("Segoe UI", 9), bootstyle="secondary")
+        self.resumen = tb.Label(fila2, text="", font=("Segoe UI", 9), bootstyle="secondary")
         self.resumen.pack(side="right")
 
     # ---- tarjeta con la tabla ----
@@ -257,6 +278,11 @@ class GestorApp:
         vc = ordenes["URGENCIA"].value_counts()
         for key, (pill, txt) in self.sem.items():
             pill.config(text=f"{int(vc.get(key, 0)):,}  ·  {txt}")
+        # Poblar el desplegable de familias con las presentes en los datos.
+        fams = sorted({cap(x) for x in ordenes["FAMILIA"].dropna().unique()
+                       if str(x).lower() != "nan"})
+        self.cmb_familia["values"] = [TODAS_FAMILIAS] + fams
+        self.cmb_familia.current(0)
         self._aplicar_filtro()
         self._status(f"Listo — {len(ordenes):,} productos a pedir en total.")
 
@@ -297,7 +323,8 @@ class GestorApp:
     def _aplicar_filtro(self):
         if self.ordenes is None:
             return
-        df = filtrar(self.ordenes, self.cmb.get(), self.busqueda.get())
+        df = filtrar(self.ordenes, self.cmb.get(), self.busqueda.get(),
+                     self.cmb_familia.get())
         df = self._ordenar_df(df)
         self._encabezados()
         self._vista = df
