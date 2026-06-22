@@ -178,10 +178,10 @@ class GestorApp:
     # ---- estilos ----
     def _estilos(self):
         st = self.root.style
-        st.configure("Treeview", rowheight=30, font=(FONT, 10),
+        st.configure("Treeview", rowheight=26, font=(FONT, 9),
                      background="white", fieldbackground="white", borderwidth=0)
-        st.configure("Treeview.Heading", font=(FONT_SEMI, 10),
-                     padding=(10, 10), background="#F8FAFC", foreground=INK, relief="flat")
+        st.configure("Treeview.Heading", font=(FONT_SEMI, 9),
+                     padding=(8, 8), background="#F8FAFC", foreground=INK, relief="flat")
         st.map("Treeview.Heading", background=[("active", "#F1F5F9")])
         st.map("Treeview", background=[("selected", "#EAF1EC")],
                foreground=[("selected", INK)])
@@ -206,7 +206,7 @@ class GestorApp:
     def _shell(self):
         shell = tb.Frame(self.root)
         shell.pack(fill="both", expand=True, side="top")
-        shell.columnconfigure(0, weight=0, minsize=236)
+        shell.columnconfigure(0, weight=0, minsize=256)
         shell.columnconfigure(1, weight=0)   # hairline vertical
         shell.columnconfigure(2, weight=1)
         shell.rowconfigure(0, weight=1)
@@ -217,24 +217,23 @@ class GestorApp:
     def _rail(self, shell):
         rail = tk.Frame(shell, bg=RAIL_BG)
         rail.grid(row=0, column=0, sticky="nsew")
-        tk.Label(rail, text="ESTADO DE INVENTARIO", bg=RAIL_BG, fg=SLATE,
-                 font=(FONT_SEMI, 8)).pack(anchor="w", padx=16, pady=(14, 6))
 
+        # --- Navegación por estado (arriba) ---
+        tk.Label(rail, text="ESTADO DE INVENTARIO", bg=RAIL_BG, fg=SLATE,
+                 font=(FONT_SEMI, 8)).pack(anchor="w", padx=16, pady=(12, 4))
         self._rail_items = {}
         for label, estados, color in RAIL_ITEMS:
             it = tk.Frame(rail, bg=RAIL_BG, cursor="hand2")
             it.pack(fill="x")
-            acc = tk.Frame(it, bg=RAIL_BG, width=4)        # barra de acento (se pinta al seleccionar)
+            acc = tk.Frame(it, bg=RAIL_BG, width=3)
             acc.pack(side="left", fill="y")
             inner = tk.Frame(it, bg=RAIL_BG)
-            inner.pack(side="left", fill="x", expand=True, padx=(10, 12), pady=6)
-            dot = tk.Label(inner, text="●", bg=RAIL_BG, fg=color, font=(FONT, 9))
+            inner.pack(side="left", fill="x", expand=True, padx=(10, 12), pady=4)
+            dot = tk.Label(inner, text="●", bg=RAIL_BG, fg=color, font=(FONT, 8))
             dot.pack(side="left", padx=(0, 8))
-            lbl = tk.Label(inner, text=label, bg=RAIL_BG, fg=INK,
-                           anchor="w", font=(FONT, 10))
+            lbl = tk.Label(inner, text=label, bg=RAIL_BG, fg=INK, anchor="w", font=(FONT, 9))
             lbl.pack(side="left")
-            cnt = tk.Label(inner, text="0", bg=RAIL_BG, fg=SLATE,
-                           font=(FONT_SEMI, 9))
+            cnt = tk.Label(inner, text="0", bg=RAIL_BG, fg=SLATE, font=(FONT_SEMI, 8))
             cnt.pack(side="right")
             for w in (it, inner, dot, lbl, cnt):
                 w.bind("<Button-1>", lambda e, es=estados, lb=label: self._drill(es, lb))
@@ -242,18 +241,44 @@ class GestorApp:
                                        "estados": estados, "color": color,
                                        "widgets": (it, inner, dot, lbl, cnt)}
 
-        # Bloque inferior: capital inmovilizado.
-        sep = tk.Frame(rail, bg=LINE, height=1)
-        sep.pack(fill="x", padx=12, pady=(12, 0))
-        cap_box = tk.Frame(rail, bg=RAIL_BG)
-        cap_box.pack(fill="x", side="bottom", padx=16, pady=14)
-        tk.Label(cap_box, text="CAPITAL INMOVILIZADO", bg=RAIL_BG, fg=SLATE,
+        # Espaciador: empuja el panel hacia la zona inferior-izquierda.
+        tk.Frame(rail, bg=RAIL_BG).pack(fill="both", expand=True)
+
+        # --- Panel de indicadores (abajo-izquierda) ---
+        self._panel_dashboard(rail)
+
+    def _panel_dashboard(self, rail):
+        tk.Frame(rail, bg=LINE, height=1).pack(fill="x", padx=12)
+        dash = tk.Frame(rail, bg=RAIL_BG)
+        dash.pack(fill="x", padx=14, pady=(10, 12))
+        tk.Label(dash, text="INDICADORES", bg=RAIL_BG, fg=SLATE,
                  font=(FONT_SEMI, 8)).pack(anchor="w", pady=(0, 4))
-        self.lbl_cap_sobre = tk.Label(cap_box, text="Sobrestock  —", bg=RAIL_BG,
-                                      fg=INK, font=(FONT, 9), anchor="w")
+
+        grid = tk.Frame(dash, bg=RAIL_BG)
+        grid.pack(fill="x")
+        grid.columnconfigure(0, weight=1, uniform="k")
+        grid.columnconfigure(1, weight=1, uniform="k")
+        self.kpi = {}
+        for i, (key, label, style, espct) in enumerate(self.KPIS):
+            cell = tk.Frame(grid, bg=RAIL_BG)
+            cell.grid(row=i // 2, column=i % 2, sticky="nsew", pady=(0, 6))
+            meter = tb.Meter(cell, metersize=74, amountused=0, amounttotal=100,
+                             subtext=label, bootstyle=style,
+                             textright="%" if espct else "", stripethickness=6,
+                             subtextfont=(FONT, 7))
+            meter.pack()
+            det = tk.Label(cell, text="—", bg=RAIL_BG, fg=SLATE, font=(FONT_SEMI, 8))
+            det.pack()
+            self.kpi[key] = {"meter": meter, "det": det, "pct": espct}
+
+        self._barra_salud(dash)
+
+        tk.Frame(dash, bg=LINE, height=1).pack(fill="x", pady=(8, 6))
+        self.lbl_cap_sobre = tk.Label(dash, text="Sobrestock  —", bg=RAIL_BG, fg=INK,
+                                      font=(FONT, 8), anchor="w")
         self.lbl_cap_sobre.pack(anchor="w")
-        self.lbl_cap_dead = tk.Label(cap_box, text="Sin rotación  —", bg=RAIL_BG,
-                                     fg=INK, font=(FONT, 9), anchor="w")
+        self.lbl_cap_dead = tk.Label(dash, text="Sin rotación  —", bg=RAIL_BG, fg=INK,
+                                     font=(FONT, 8), anchor="w")
         self.lbl_cap_dead.pack(anchor="w")
 
     def _main(self, shell):
@@ -261,7 +286,7 @@ class GestorApp:
         main.grid(row=0, column=2, sticky="nsew")
         for c in range(12):
             main.columnconfigure(c, weight=1, uniform="g")
-        main.rowconfigure(4, weight=1)  # la tabla crece
+        main.rowconfigure(2, weight=1)  # la tabla crece
         self.main = main
 
         # Fila 0: encabezado de página + acciones.
@@ -270,10 +295,9 @@ class GestorApp:
         head.columnconfigure(0, weight=1)
         izq = tb.Frame(head)
         izq.grid(row=0, column=0, sticky="w")
-        tb.Label(izq, text="Salud de inventario",
-                 font=(FONT_SEMI, 16)).pack(anchor="w")
+        tb.Label(izq, text="Salud de inventario", font=(FONT_SEMI, 14)).pack(anchor="w")
         tb.Label(izq, text=f"Punto de reorden y cobertura · lead time {config.LEAD_TIME_GLOBAL_DIAS} días (supuesto, configurable)",
-                 font=(FONT, 9), bootstyle="secondary").pack(anchor="w")
+                 font=(FONT, 8), bootstyle="secondary").pack(anchor="w")
         der = tb.Frame(head)
         der.grid(row=0, column=1, sticky="e")
         self.btn_generar = tb.Button(der, text="↻  Actualizar",
@@ -283,55 +307,24 @@ class GestorApp:
                                     bootstyle="primary", command=self._exportar, state="disabled")
         self.btn_export.pack(side="left")
 
-        # Fila 1: 4 medidores KPI (columnspan=3 cada uno).
-        self.kpi = {}
-        for i, (key, label, style, espct) in enumerate(self.KPIS):
-            cell = tb.Frame(main)
-            cell.grid(row=1, column=i * 3, columnspan=3, sticky="nsew",
-                      padx=(0 if i == 0 else GUTTER, 0), pady=(0, 8))
-            meter = tb.Meter(cell, metersize=128, amountused=0, amounttotal=100,
-                             subtext=label, bootstyle=style,
-                             textright="%" if espct else "", stripethickness=8,
-                             subtextfont=(FONT, 9))
-            meter.pack()
-            det = tk.Label(cell, text="—", fg="#5C5C5C", font=(FONT_SEMI, 10))
-            det.pack()
-            self.kpi[key] = {"meter": meter, "det": det, "pct": espct}
-
-        # Fila 2: barra 100% apilada del mix de salud + leyenda.
-        self._barra_salud(main)
-
-        # Fila 3: toolbar (categoría + familia | buscar + contador).
+        # Fila 1: toolbar.  Fila 2: tabla (los KPIs y la barra ahora viven en el rail).
         self._toolbar(main)
-
-        # Fila 4: tabla.
         self._tabla(main)
 
-    def _barra_salud(self, main):
-        wrap = tb.Frame(main)
-        wrap.grid(row=2, column=0, columnspan=12, sticky="ew", pady=(0, 8))
-        cont = tk.Frame(wrap, bg="white", height=22, highlightbackground=CARD_BORDER,
-                        highlightthickness=1)
+    def _barra_salud(self, parent):
+        tk.Label(parent, text="MIX DE SALUD", bg=RAIL_BG, fg=SLATE,
+                 font=(FONT_SEMI, 8)).pack(anchor="w", pady=(6, 3))
+        cont = tk.Frame(parent, bg="white", height=12,
+                        highlightbackground=CARD_BORDER, highlightthickness=1)
         cont.pack(fill="x")
         cont.pack_propagate(False)
         self._barra_cont = cont
-        self._barra_segs = {}
-        for est in BARRA_ORDEN:
-            seg = tk.Frame(cont, bg=STATE_COLOR[est])
-            self._barra_segs[est] = seg
-        leg = tb.Frame(wrap)
-        leg.pack(fill="x", pady=(4, 0))
-        for est in BARRA_ORDEN:
-            chip = tk.Frame(leg, bg="white")
-            chip.pack(side="left", padx=(0, 14))
-            tk.Label(chip, text="■", fg=STATE_COLOR[est], bg="white",
-                     font=(FONT, 9)).pack(side="left")
-            tk.Label(chip, text=EST_TXT[est] if est != "SIN DATO" else "Sin dato",
-                     fg="#5C5C5C", bg="white", font=(FONT, 8)).pack(side="left")
+        # La leyenda de colores la dan los puntos del rail (no se repite aquí).
+        self._barra_segs = {est: tk.Frame(cont, bg=STATE_COLOR[est]) for est in BARRA_ORDEN}
 
     def _toolbar(self, main):
         bar = tb.Frame(main)
-        bar.grid(row=3, column=0, columnspan=12, sticky="ew", pady=(2, 8))
+        bar.grid(row=1, column=0, columnspan=12, sticky="ew", pady=(0, 10))
         bar.columnconfigure(4, weight=1)  # espaciador
         tb.Label(bar, text="Categoría", bootstyle="secondary").grid(row=0, column=0, padx=(0, 6))
         self.cmb_categoria = tb.Combobox(bar, values=[TODAS_CATEGORIAS], state="readonly",
@@ -354,7 +347,7 @@ class GestorApp:
 
     def _tabla(self, main):
         card = tk.Frame(main, bg="white", highlightbackground=CARD_BORDER, highlightthickness=1)
-        card.grid(row=4, column=0, columnspan=12, sticky="nsew")
+        card.grid(row=2, column=0, columnspan=12, sticky="nsew")
         cols = [c[0] for c in self.COLS]
         self.tree = ttk.Treeview(card, columns=cols, show="headings")
         for key, titulo, ancho, anchor in self.COLS:
