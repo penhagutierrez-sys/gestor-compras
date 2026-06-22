@@ -1,9 +1,10 @@
 """
-GESTOR DE COMPRAS 2.0 — Ventana de escritorio (UI moderna)
-==========================================================
-Dashboard de SALUD DE INVENTARIO (estilo retail: Lowe's / Sodimac / RELEX / Slim4):
-clasifica cada producto por días de cobertura y muestra qué reponer y dónde hay
-capital inmovilizado (sobrestock / sin rotación).
+GESTOR DE COMPRAS 2.0 — Consola de salud de inventario (UI estilo Salesforce Lightning)
+=======================================================================================
+Layout tipo "console": barra de marca + rail lateral de navegación por estado
+(clic = filtra la tabla) + contenido en una grilla maestra de 12 columnas
+(medidores KPI, barra de salud, toolbar y tabla). Resuelve la desalineación
+usando grid() en vez de pack() para los bloques estructurales.
 
 Para abrirla:  python app.py   (o doble clic en "Abrir Gestor de Compras.bat")
 """
@@ -19,52 +20,42 @@ from ttkbootstrap.dialogs import Messagebox
 from motor import pipeline
 from motor import exportar as ex
 
-# --- Estados de salud de inventario ---------------------------------------
+# --- Estados ---------------------------------------------------------------
 EST_TXT = {
     "QUIEBRE": "Quiebre", "CRITICO": "Crítico", "BAJO": "Bajo",
     "SALUDABLE": "Saludable", "SOBRESTOCK": "Sobrestock",
     "SIN ROTACION": "Sin rotación", "SIN DATO": "-",
 }
-# Tinte de fila por estado (semáforo).
+# Color fuerte por estado (rail, barra de salud).
+STATE_COLOR = {
+    "QUIEBRE": "#E74C3C", "CRITICO": "#E67E22", "BAJO": "#F1C40F",
+    "SALUDABLE": "#27AE60", "SOBRESTOCK": "#3498DB",
+    "SIN ROTACION": "#7F8C8D", "SIN DATO": "#BDC3C7",
+}
+# Tinte suave por estado (fondo de fila en la tabla).
 EST_ROW = {
-    "QUIEBRE": "#F5B7B1", "CRITICO": "#F8CBA6", "BAJO": "#FBE7A1",
-    "SALUDABLE": "#ABEBC6", "SOBRESTOCK": "#AED6F1",
-    "SIN ROTACION": "#D5D8DC", "SIN DATO": "#ECECEC",
+    "QUIEBRE": "#FDEDEC", "CRITICO": "#FDF2E9", "BAJO": "#FEF9E7",
+    "SALUDABLE": "#EAFAF1", "SOBRESTOCK": "#EBF5FB",
+    "SIN ROTACION": "#F2F3F4", "SIN DATO": "#F8F9F9",
 }
 EST_TAG = {e: e.lower().replace(" ", "_") for e in EST_TXT}
-# Orden por gravedad para el ordenamiento de la columna Estado.
 EST_ORDEN = {"QUIEBRE": 0, "CRITICO": 1, "BAJO": 2, "SIN DATO": 3,
              "SALUDABLE": 4, "SOBRESTOCK": 5, "SIN ROTACION": 6}
+# Orden de los segmentos en la barra de salud.
+BARRA_ORDEN = ["QUIEBRE", "CRITICO", "BAJO", "SALUDABLE", "SOBRESTOCK",
+               "SIN ROTACION", "SIN DATO"]
 
-# Vistas (modo) -> estados que muestran.
-MODOS = [
-    "Por reponer (quiebre + crítico + bajo)",
-    "Quiebre (sin stock)",
-    "Crítico (urgente)",
-    "Saludable",
-    "Sobrestock (exceso)",
-    "Sin rotación (lento)",
-    "Sin dato de stock",
-    "Todos",
-]
-ESTADOS_POR_MODO = {
-    MODOS[0]: ["QUIEBRE", "CRITICO", "BAJO"],
-    MODOS[1]: ["QUIEBRE"],
-    MODOS[2]: ["CRITICO"],
-    MODOS[3]: ["SALUDABLE"],
-    MODOS[4]: ["SOBRESTOCK"],
-    MODOS[5]: ["SIN ROTACION"],
-    MODOS[6]: ["SIN DATO"],
-}
-
-# Semáforo (píldoras): etiqueta, estados que agrupa, color.
-SEM_DEFS = [
-    ("Quiebre", ["QUIEBRE"], "danger"),
-    ("Por reponer", ["CRITICO", "BAJO"], "warning"),
-    ("Saludable", ["SALUDABLE"], "success"),
-    ("Sobrestock", ["SOBRESTOCK"], "info"),
-    ("Sin rotación", ["SIN ROTACION"], "dark"),
-    ("Sin dato", ["SIN DATO"], "secondary"),
+# Items del rail lateral: (etiqueta, estados que agrupa [None=todos], color de acento).
+RAIL_ITEMS = [
+    ("Por reponer", ["QUIEBRE", "CRITICO", "BAJO"], "#E67E22"),
+    ("Quiebre", ["QUIEBRE"], "#E74C3C"),
+    ("Crítico", ["CRITICO"], "#E67E22"),
+    ("Bajo", ["BAJO"], "#F1C40F"),
+    ("Saludable", ["SALUDABLE"], "#27AE60"),
+    ("Sobrestock", ["SOBRESTOCK"], "#3498DB"),
+    ("Sin rotación", ["SIN ROTACION"], "#7F8C8D"),
+    ("Sin dato", ["SIN DATO"], "#BDC3C7"),
+    ("Todos", None, "#5C5C5C"),
 ]
 
 TODAS_FAMILIAS = "Todas las familias"
@@ -73,9 +64,13 @@ TODAS_CATEGORIAS = "Todas las categorías"
 NAVY = "#032D60"
 NAVY_SUB = "#9FB6D6"
 CARD_BORDER = "#DDDBDA"
+RAIL_BG = "#F4F6F9"
+RAIL_SEL = "#DCE7F3"
+GUTTER = 12
+PAD = 20
 
 
-# --- Funciones "puras" (sin ventana), fáciles de probar ---------------------
+# --- Funciones puras --------------------------------------------------------
 def fmt_num(v):
     return f"{int(round(float(v))):,}".replace(",", ".")
 
@@ -84,32 +79,30 @@ def fmt_clp(v):
     return "$ " + fmt_num(v)
 
 
+def fmt_millones(v):
+    return f"$ {v / 1e6:,.1f}M".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def fmt_dias(v):
-    """Días de cobertura; '—' si no aplica (sin demanda o sin dato)."""
     if v is None or v != v:  # NaN
         return "—"
     return fmt_num(v)
 
 
 def cap(x):
-    """Texto de categoría/familia en formato Título (PINTURA -> Pintura)."""
     s = str(x)
     return "" if s.lower() == "nan" else s.title()
 
 
-def filtrar(inv, modo, texto="", familia=None, categoria=None):
-    """Aplica vista (estado), categoría, familia y búsqueda sobre el inventario."""
-    df = inv.sort_values("VENTA_TOTAL", ascending=False)  # más vendidos primero
-
-    estados = ESTADOS_POR_MODO.get(modo)
+def filtrar(inv, estados, texto="", familia=None, categoria=None):
+    """Filtra el inventario por estados (lista o None=todos), categoría, familia y texto."""
+    df = inv.sort_values("VENTA_TOTAL", ascending=False)
     if estados:
         df = df[df["ESTADO"].isin(estados)]
-
     if categoria and categoria != TODAS_CATEGORIAS:
         df = df[df["RUBRO"].astype(str).str.upper() == categoria.upper()]
     if familia and familia != TODAS_FAMILIAS:
         df = df[df["FAMILIA"].astype(str).str.upper() == familia.upper()]
-
     texto = (texto or "").strip().upper()
     if texto:
         def tiene(col):
@@ -122,7 +115,7 @@ def filtrar(inv, modo, texto="", familia=None, categoria=None):
 class GestorApp:
     COLS = [
         ("CODIGO", "Código", 105, "w"),
-        ("PRODUCTO", "Producto", 230, "w"),
+        ("PRODUCTO", "Producto", 250, "w"),
         ("RUBRO", "Categoría", 130, "w"),
         ("FAMILIA", "Familia", 140, "w"),
         ("ABC", "ABC", 46, "center"),
@@ -132,6 +125,13 @@ class GestorApp:
         ("SUGERIDO_PEDIR", "Sugerido", 84, "e"),
         ("MONTO_ESTIMADO", "Monto compra", 112, "e"),
     ]
+    # KPI: clave, etiqueta, estilo, es_porcentaje
+    KPIS = [
+        ("inmovil", "Inmovilizado", "danger", True),
+        ("reponer", "Por reponer", "warning", False),
+        ("sobre", "Sobrestock", "info", True),
+        ("dead", "Sin rotación", "secondary", True),
+    ]
 
     def __init__(self, root):
         self.root = root
@@ -139,131 +139,190 @@ class GestorApp:
         self._vista = None
         self._sort_col = None
         self._sort_asc = True
+        self._estados_activos = ["QUIEBRE", "CRITICO", "BAJO"]  # vista inicial
 
         self._estilos()
         self._barra_marca()
-        self._encabezado_pagina()
-        self._kpis()
-        self._semaforo()
-        self._toolbar()
-        self._tarjeta_tabla()
-        self._barra_estado()
-
+        self._barra_estado()          # abajo (pack), antes del shell
+        self._shell()                 # rail + main
         self._generar()
 
-    # ---- estilos base ----
+    # ---- estilos ----
     def _estilos(self):
         st = self.root.style
-        st.configure("Treeview", rowheight=30, font=("Segoe UI", 10),
+        st.configure("Treeview", rowheight=29, font=("Segoe UI", 10),
                      background="white", fieldbackground="white", borderwidth=0)
         st.configure("Treeview.Heading", font=("Segoe UI Semibold", 10),
-                     padding=(10, 10), background="#F3F3F3", foreground="#3E3E3C",
-                     relief="flat")
+                     padding=(10, 9), background="#F3F3F3", foreground="#3E3E3C", relief="flat")
         st.map("Treeview.Heading", background=[("active", "#E9E9E9")])
         st.map("Treeview", background=[("selected", "#D8E6F6")],
                foreground=[("selected", "#161616")])
 
     def _barra_marca(self):
-        bar = tk.Frame(self.root, bg=NAVY, height=56)
-        bar.pack(fill="x")
+        bar = tk.Frame(self.root, bg=NAVY, height=54)
+        bar.pack(fill="x", side="top")
         bar.pack_propagate(False)
         tk.Label(bar, text="Gestor de Compras", bg=NAVY, fg="white",
                  font=("Segoe UI Semibold", 15)).pack(side="left", padx=20)
         tk.Label(bar, text="Salud de inventario · Ferretería Solucenter", bg=NAVY,
                  fg=NAVY_SUB, font=("Segoe UI", 9)).pack(side="left", pady=(6, 0))
 
-    def _encabezado_pagina(self):
-        ph = tb.Frame(self.root, padding=(20, 16, 20, 6))
-        ph.pack(fill="x")
-        left = tb.Frame(ph)
-        left.pack(side="left", fill="x", expand=True)
-        tb.Label(left, text="Salud de inventario",
+    def _barra_estado(self):
+        self.estado = tb.Label(self.root, text="", anchor="w", padding=(PAD, 4),
+                               bootstyle="secondary", font=("Segoe UI", 8))
+        self.estado.pack(fill="x", side="bottom")
+
+    # ---- shell: rail (izq) + main (der) ----
+    def _shell(self):
+        shell = tb.Frame(self.root)
+        shell.pack(fill="both", expand=True, side="top")
+        shell.columnconfigure(0, weight=0, minsize=232)
+        shell.columnconfigure(1, weight=1)
+        shell.rowconfigure(0, weight=1)
+        self._rail(shell)
+        self._main(shell)
+
+    def _rail(self, shell):
+        rail = tk.Frame(shell, bg=RAIL_BG)
+        rail.grid(row=0, column=0, sticky="nsew")
+        tk.Label(rail, text="ESTADO DE INVENTARIO", bg=RAIL_BG, fg="#7A869A",
+                 font=("Segoe UI Semibold", 8)).pack(anchor="w", padx=16, pady=(14, 6))
+
+        self._rail_items = {}
+        for label, estados, color in RAIL_ITEMS:
+            it = tk.Frame(rail, bg=RAIL_BG, cursor="hand2")
+            it.pack(fill="x")
+            acc = tk.Frame(it, bg=RAIL_BG, width=4)        # barra de acento (se pinta al seleccionar)
+            acc.pack(side="left", fill="y")
+            inner = tk.Frame(it, bg=RAIL_BG)
+            inner.pack(side="left", fill="x", expand=True, padx=(10, 12), pady=6)
+            dot = tk.Label(inner, text="●", bg=RAIL_BG, fg=color, font=("Segoe UI", 9))
+            dot.pack(side="left", padx=(0, 8))
+            lbl = tk.Label(inner, text=label, bg=RAIL_BG, fg="#2C3E50",
+                           anchor="w", font=("Segoe UI", 10))
+            lbl.pack(side="left")
+            cnt = tk.Label(inner, text="0", bg=RAIL_BG, fg="#7A869A",
+                           font=("Segoe UI Semibold", 9))
+            cnt.pack(side="right")
+            for w in (it, inner, dot, lbl, cnt):
+                w.bind("<Button-1>", lambda e, es=estados, lb=label: self._drill(es, lb))
+            self._rail_items[label] = {"frame": it, "acc": acc, "cnt": cnt,
+                                       "estados": estados, "color": color,
+                                       "widgets": (it, inner, dot, lbl, cnt)}
+
+        # Bloque inferior: capital inmovilizado.
+        sep = tk.Frame(rail, bg="#E1E6EC", height=1)
+        sep.pack(fill="x", padx=12, pady=(12, 0))
+        cap_box = tk.Frame(rail, bg=RAIL_BG)
+        cap_box.pack(fill="x", side="bottom", padx=16, pady=14)
+        tk.Label(cap_box, text="CAPITAL INMOVILIZADO", bg=RAIL_BG, fg="#7A869A",
+                 font=("Segoe UI Semibold", 8)).pack(anchor="w", pady=(0, 4))
+        self.lbl_cap_sobre = tk.Label(cap_box, text="Sobrestock  —", bg=RAIL_BG,
+                                      fg="#34495E", font=("Segoe UI", 9), anchor="w")
+        self.lbl_cap_sobre.pack(anchor="w")
+        self.lbl_cap_dead = tk.Label(cap_box, text="Sin rotación  —", bg=RAIL_BG,
+                                     fg="#34495E", font=("Segoe UI", 9), anchor="w")
+        self.lbl_cap_dead.pack(anchor="w")
+
+    def _main(self, shell):
+        main = tb.Frame(shell, padding=(PAD, 12, PAD, 12))
+        main.grid(row=0, column=1, sticky="nsew")
+        for c in range(12):
+            main.columnconfigure(c, weight=1, uniform="g")
+        main.rowconfigure(4, weight=1)  # la tabla crece
+        self.main = main
+
+        # Fila 0: encabezado de página + acciones.
+        head = tb.Frame(main)
+        head.grid(row=0, column=0, columnspan=12, sticky="ew", pady=(0, 10))
+        head.columnconfigure(0, weight=1)
+        izq = tb.Frame(head)
+        izq.grid(row=0, column=0, sticky="w")
+        tb.Label(izq, text="Salud de inventario",
                  font=("Segoe UI Semibold", 16)).pack(anchor="w")
-        tb.Label(left, text="Qué reponer y dónde hay capital inmovilizado — por días de cobertura",
+        tb.Label(izq, text="Qué reponer y dónde hay capital inmovilizado — por días de cobertura",
                  font=("Segoe UI", 9), bootstyle="secondary").pack(anchor="w")
-        right = tb.Frame(ph)
-        right.pack(side="right")
-        self.btn_generar = tb.Button(right, text="↻  Actualizar",
+        der = tb.Frame(head)
+        der.grid(row=0, column=1, sticky="e")
+        self.btn_generar = tb.Button(der, text="↻  Actualizar",
                                      bootstyle="secondary-outline", command=self._generar)
         self.btn_generar.pack(side="left", padx=(0, 8))
-        self.btn_export = tb.Button(right, text="↧  Exportar a Excel",
-                                    bootstyle="primary", command=self._exportar,
-                                    state="disabled")
+        self.btn_export = tb.Button(der, text="↧  Exportar a Excel",
+                                    bootstyle="primary", command=self._exportar, state="disabled")
         self.btn_export.pack(side="left")
 
-    def _kpis(self):
-        row = tb.Frame(self.root, padding=(20, 10, 20, 2))
-        row.pack(fill="x")
+        # Fila 1: 4 medidores KPI (columnspan=3 cada uno).
         self.kpi = {}
-        defs = [
-            ("rep_monto", "Por reponer (compra)", "#C0392B"),
-            ("rep_cnt", "Productos por reponer", "#B9770E"),
-            ("over", "Capital en sobrestock", "#1F6FB2"),
-            ("dead", "Capital sin rotación", "#566573"),
-        ]
-        for i, (key, label, color) in enumerate(defs):
-            card = tk.Frame(row, bg="white", highlightbackground=CARD_BORDER,
-                            highlightthickness=1)
-            card.pack(side="left", expand=True, fill="x", padx=(0 if i == 0 else 12, 0))
-            val = tk.Label(card, text="—", bg="white", fg=color,
-                           font=("Segoe UI", 20, "bold"))
-            val.pack(anchor="w", padx=16, pady=(12, 0))
-            tk.Label(card, text=label, bg="white", fg="#5C5C5C",
-                     font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(0, 12))
-            self.kpi[key] = val
+        for i, (key, label, style, espct) in enumerate(self.KPIS):
+            cell = tb.Frame(main)
+            cell.grid(row=1, column=i * 3, columnspan=3, sticky="nsew",
+                      padx=(0 if i == 0 else GUTTER, 0), pady=(0, 8))
+            meter = tb.Meter(cell, metersize=128, amountused=0, amounttotal=100,
+                             subtext=label, bootstyle=style,
+                             textright="%" if espct else "", stripethickness=8,
+                             subtextfont=("Segoe UI", 9))
+            meter.pack()
+            det = tk.Label(cell, text="—", fg="#5C5C5C", font=("Segoe UI Semibold", 10))
+            det.pack()
+            self.kpi[key] = {"meter": meter, "det": det, "pct": espct}
 
-    def _semaforo(self):
-        bar = tb.Frame(self.root, padding=(20, 6))
-        bar.pack(fill="x")
-        self.sem = {}
-        for txt, estados, color in SEM_DEFS:
-            pill = tb.Label(bar, text=f"0  ·  {txt}", bootstyle=f"inverse-{color}",
-                            font=("Segoe UI Semibold", 10), padding=(12, 6))
-            pill.pack(side="left", padx=(0, 10))
-            self.sem[txt] = (pill, estados)
+        # Fila 2: barra 100% apilada del mix de salud + leyenda.
+        self._barra_salud(main)
 
-    def _toolbar(self):
-        wrap = tb.Frame(self.root, padding=(20, 8))
-        wrap.pack(fill="x")
-        fila1 = tb.Frame(wrap)
-        fila1.pack(fill="x")
-        tb.Label(fila1, text="Ver", bootstyle="secondary").pack(side="left", padx=(0, 6))
-        self.cmb = tb.Combobox(fila1, values=MODOS, state="readonly", width=30,
-                               bootstyle="primary")
-        self.cmb.current(0)
-        self.cmb.pack(side="left", padx=(0, 16))
-        self.cmb.bind("<<ComboboxSelected>>", lambda e: self._aplicar_filtro())
+        # Fila 3: toolbar (categoría + familia | buscar + contador).
+        self._toolbar(main)
 
-        tb.Label(fila1, text="Categoría", bootstyle="secondary").pack(side="left", padx=(0, 6))
-        self.cmb_categoria = tb.Combobox(fila1, values=[TODAS_CATEGORIAS], state="readonly",
+        # Fila 4: tabla.
+        self._tabla(main)
+
+    def _barra_salud(self, main):
+        wrap = tb.Frame(main)
+        wrap.grid(row=2, column=0, columnspan=12, sticky="ew", pady=(0, 8))
+        cont = tk.Frame(wrap, bg="white", height=22, highlightbackground=CARD_BORDER,
+                        highlightthickness=1)
+        cont.pack(fill="x")
+        cont.pack_propagate(False)
+        self._barra_cont = cont
+        self._barra_segs = {}
+        for est in BARRA_ORDEN:
+            seg = tk.Frame(cont, bg=STATE_COLOR[est])
+            self._barra_segs[est] = seg
+        leg = tb.Frame(wrap)
+        leg.pack(fill="x", pady=(4, 0))
+        for est in BARRA_ORDEN:
+            chip = tk.Frame(leg, bg="white")
+            chip.pack(side="left", padx=(0, 14))
+            tk.Label(chip, text="■", fg=STATE_COLOR[est], bg="white",
+                     font=("Segoe UI", 9)).pack(side="left")
+            tk.Label(chip, text=EST_TXT[est] if est != "SIN DATO" else "Sin dato",
+                     fg="#5C5C5C", bg="white", font=("Segoe UI", 8)).pack(side="left")
+
+    def _toolbar(self, main):
+        bar = tb.Frame(main)
+        bar.grid(row=3, column=0, columnspan=12, sticky="ew", pady=(2, 8))
+        bar.columnconfigure(4, weight=1)  # espaciador
+        tb.Label(bar, text="Categoría", bootstyle="secondary").grid(row=0, column=0, padx=(0, 6))
+        self.cmb_categoria = tb.Combobox(bar, values=[TODAS_CATEGORIAS], state="readonly",
                                          width=22, bootstyle="primary")
         self.cmb_categoria.current(0)
-        self.cmb_categoria.pack(side="left", padx=(0, 16))
+        self.cmb_categoria.grid(row=0, column=1, padx=(0, 16))
         self.cmb_categoria.bind("<<ComboboxSelected>>", lambda e: self._cambio_categoria())
-
-        tb.Label(fila1, text="Familia", bootstyle="secondary").pack(side="left", padx=(0, 6))
-        self.cmb_familia = tb.Combobox(fila1, values=[TODAS_FAMILIAS], state="readonly",
+        tb.Label(bar, text="Familia", bootstyle="secondary").grid(row=0, column=2, padx=(0, 6))
+        self.cmb_familia = tb.Combobox(bar, values=[TODAS_FAMILIAS], state="readonly",
                                        width=24, bootstyle="primary")
         self.cmb_familia.current(0)
-        self.cmb_familia.pack(side="left")
+        self.cmb_familia.grid(row=0, column=3, sticky="w")
         self.cmb_familia.bind("<<ComboboxSelected>>", lambda e: self._aplicar_filtro())
 
-        fila2 = tb.Frame(wrap)
-        fila2.pack(fill="x", pady=(8, 0))
-        tb.Label(fila2, text="Buscar", bootstyle="secondary").pack(side="left", padx=(0, 6))
-        self.busqueda = tb.Entry(fila2, width=40)
-        self.busqueda.pack(side="left")
+        self.busqueda = tb.Entry(bar, width=26)
+        self.busqueda.grid(row=0, column=5, sticky="e", padx=(0, 10))
         self.busqueda.bind("<KeyRelease>", lambda e: self._aplicar_filtro())
-        self.resumen = tb.Label(fila2, text="", font=("Segoe UI", 9), bootstyle="secondary")
-        self.resumen.pack(side="right")
+        self.resumen = tb.Label(bar, text="", font=("Segoe UI", 9), bootstyle="secondary")
+        self.resumen.grid(row=0, column=6, sticky="e")
 
-    def _tarjeta_tabla(self):
-        outer = tb.Frame(self.root, padding=(20, 6, 20, 16))
-        outer.pack(fill="both", expand=True)
-        card = tk.Frame(outer, bg="white", highlightbackground=CARD_BORDER,
-                        highlightthickness=1)
-        card.pack(fill="both", expand=True)
-
+    def _tabla(self, main):
+        card = tk.Frame(main, bg="white", highlightbackground=CARD_BORDER, highlightthickness=1)
+        card.grid(row=4, column=0, columnspan=12, sticky="nsew")
         cols = [c[0] for c in self.COLS]
         self.tree = ttk.Treeview(card, columns=cols, show="headings")
         for key, titulo, ancho, anchor in self.COLS:
@@ -273,22 +332,14 @@ class GestorApp:
             self.tree.tag_configure(tag, background=EST_ROW[est])
         self.tree.tag_configure("par", background="white")
         self.tree.tag_configure("impar", background="#FAFAFA")
-
-        sbx = tb.Scrollbar(card, orient="horizontal", command=self.tree.xview,
-                           bootstyle="round")
+        sbx = tb.Scrollbar(card, orient="horizontal", command=self.tree.xview, bootstyle="round")
         sbx.pack(side="bottom", fill="x")
-        sb = tb.Scrollbar(card, orient="vertical", command=self.tree.yview,
-                          bootstyle="round")
+        sb = tb.Scrollbar(card, orient="vertical", command=self.tree.yview, bootstyle="round")
         sb.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=sb.set, xscrollcommand=sbx.set)
         self.tree.pack(side="left", fill="both", expand=True, padx=1, pady=1)
 
-    def _barra_estado(self):
-        self.estado = tb.Label(self.root, text="", anchor="w", padding=(20, 4),
-                               bootstyle="secondary", font=("Segoe UI", 8))
-        self.estado.pack(fill="x", side="bottom")
-
-    # ---- lógica ----
+    # ---- carga ----
     def _status(self, msg):
         self.estado.config(text=msg)
 
@@ -309,38 +360,70 @@ class GestorApp:
         self.inv = inv
         self.btn_generar.config(state="normal")
         self.btn_export.config(state="normal")
-
         vc = inv["ESTADO"].value_counts()
-        for txt, (pill, estados) in self.sem.items():
-            total = int(sum(vc.get(e, 0) for e in estados))
-            pill.config(text=f"{total:,}  ·  {txt}".replace(",", "."))
 
+        # Rail: contadores.
+        for label, info in self._rail_items.items():
+            est = info["estados"]
+            total = len(inv) if est is None else int(sum(vc.get(e, 0) for e in est))
+            info["cnt"].config(text=fmt_num(total))
+
+        # Capital por estado.
+        cap_total = float(inv["VALOR_STOCK"].sum()) or 1.0
+        val_sobre = float(inv.loc[inv["ESTADO"] == "SOBRESTOCK", "VALOR_STOCK"].sum())
+        val_dead = float(inv.loc[inv["ESTADO"] == "SIN ROTACION", "VALOR_STOCK"].sum())
+        self.lbl_cap_sobre.config(text=f"Sobrestock   {fmt_millones(val_sobre)}")
+        self.lbl_cap_dead.config(text=f"Sin rotación   {fmt_millones(val_dead)}")
+
+        # KPIs (medidores).
         rep = inv[inv["ESTADO"].isin(["QUIEBRE", "CRITICO", "BAJO"])]
-        over = inv[inv["ESTADO"] == "SOBRESTOCK"]
-        dead = inv[inv["ESTADO"] == "SIN ROTACION"]
-        self.kpi["rep_monto"].config(text=fmt_clp(rep["MONTO_ESTIMADO"].sum()))
-        self.kpi["rep_cnt"].config(text=fmt_num(len(rep)))
-        self.kpi["over"].config(text=fmt_clp(over["VALOR_STOCK"].sum()))
-        self.kpi["dead"].config(text=fmt_clp(dead["VALOR_STOCK"].sum()))
+        pct_inmovil = round((val_sobre + val_dead) / cap_total * 100)
+        pct_sobre = round(val_sobre / cap_total * 100)
+        pct_dead = round(val_dead / cap_total * 100)
+        self._set_kpi("inmovil", pct_inmovil, fmt_millones(val_sobre + val_dead))
+        self._set_kpi("reponer", len(rep), fmt_millones(rep["MONTO_ESTIMADO"].sum()) + " compra",
+                      total=max(len(inv), 1))
+        self._set_kpi("sobre", pct_sobre, fmt_millones(val_sobre))
+        self._set_kpi("dead", pct_dead, fmt_millones(val_dead))
 
-        cats = sorted({cap(x) for x in inv["RUBRO"].dropna().unique()
-                       if str(x).lower() != "nan"})
+        # Barra de salud.
+        self._update_barra(vc, len(inv))
+
+        # Filtros.
+        cats = sorted({cap(x) for x in inv["RUBRO"].dropna().unique() if str(x).lower() != "nan"})
         self.cmb_categoria["values"] = [TODAS_CATEGORIAS] + cats
         self.cmb_categoria.current(0)
         self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(inv)
         self.cmb_familia.current(0)
 
-        self._aplicar_filtro()
-        self._status(f"Listo — {len(inv):,} productos clasificados.")
+        self._drill(self._estados_activos, "Por reponer")
+        self._status(f"Listo — {len(inv):,} productos clasificados.".replace(",", "."))
+
+    def _set_kpi(self, key, valor, detalle, total=100):
+        k = self.kpi[key]
+        k["meter"].configure(amounttotal=total, amountused=int(valor))
+        k["det"].config(text=detalle)
+
+    def _update_barra(self, vc, n):
+        n = max(int(n), 1)
+        x = 0.0
+        for est in BARRA_ORDEN:
+            w = int(vc.get(est, 0)) / n
+            seg = self._barra_segs[est]
+            if w > 0:
+                seg.place(relx=x, rely=0, relwidth=w, relheight=1)
+                x += w
+            else:
+                seg.place_forget()
 
     def _error(self, msg):
         self.btn_generar.config(state="normal")
         self._status("Error: " + msg)
         Messagebox.show_error(msg, "Error al generar")
 
+    # ---- filtros / navegación ----
     def _familias_de(self, df):
-        return sorted({cap(x) for x in df["FAMILIA"].dropna().unique()
-                       if str(x).lower() != "nan"})
+        return sorted({cap(x) for x in df["FAMILIA"].dropna().unique() if str(x).lower() != "nan"})
 
     def _cambio_categoria(self):
         cat = self.cmb_categoria.get()
@@ -350,6 +433,18 @@ class GestorApp:
             sub = self.inv
         self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(sub)
         self.cmb_familia.set(TODAS_FAMILIAS)
+        self._aplicar_filtro()
+
+    def _drill(self, estados, label):
+        """Clic en un item del rail: filtra por esos estados y resalta el item."""
+        self._estados_activos = estados
+        for lb, info in self._rail_items.items():
+            sel = (lb == label)
+            bg = RAIL_SEL if sel else RAIL_BG
+            info["acc"].config(bg=info["color"] if sel else RAIL_BG)
+            for w in info["widgets"]:
+                if w not in (info["acc"],):
+                    w.config(bg=bg)
         self._aplicar_filtro()
 
     def _ordenar(self, col):
@@ -366,8 +461,7 @@ class GestorApp:
             return df
         if col == "ESTADO":
             clave = df["ESTADO"].map(EST_ORDEN)
-            return (df.assign(_k=clave)
-                      .sort_values("_k", ascending=self._sort_asc, kind="stable")
+            return (df.assign(_k=clave).sort_values("_k", ascending=self._sort_asc, kind="stable")
                       .drop(columns="_k"))
         return df.sort_values(col, ascending=self._sort_asc, kind="stable")
 
@@ -379,7 +473,7 @@ class GestorApp:
     def _aplicar_filtro(self):
         if self.inv is None:
             return
-        df = filtrar(self.inv, self.cmb.get(), self.busqueda.get(),
+        df = filtrar(self.inv, self._estados_activos, self.busqueda.get(),
                      self.cmb_familia.get(), self.cmb_categoria.get())
         df = self._ordenar_df(df)
         self._encabezados()
@@ -392,23 +486,16 @@ class GestorApp:
             stock_txt = fmt_num(fila["STOCK_ACTUAL"]) if conocido else "?"
             cob_txt = fmt_dias(fila["COBERTURA_DIAS"]) if conocido else "—"
             valores = (
-                fila["CODIGO"],
-                str(fila["PRODUCTO"])[:60],
-                cap(fila["RUBRO"]),
-                cap(fila["FAMILIA"]),
-                fila["ABC"],
-                EST_TXT.get(est, est),
-                stock_txt,
-                cob_txt,
-                fmt_num(fila["SUGERIDO_PEDIR"]),
-                fmt_clp(fila["MONTO_ESTIMADO"]),
+                fila["CODIGO"], str(fila["PRODUCTO"])[:60],
+                cap(fila["RUBRO"]), cap(fila["FAMILIA"]), fila["ABC"],
+                EST_TXT.get(est, est), stock_txt, cob_txt,
+                fmt_num(fila["SUGERIDO_PEDIR"]), fmt_clp(fila["MONTO_ESTIMADO"]),
             )
             tag = EST_TAG.get(est, "impar" if i % 2 else "par")
             self.tree.insert("", "end", values=valores, tags=(tag,))
 
         monto = df["MONTO_ESTIMADO"].sum()
-        self.resumen.config(text=f"{len(df):,} productos  ·  compra {fmt_clp(monto)}"
-                            .replace(",", "."))
+        self.resumen.config(text=f"{len(df):,} productos · compra {fmt_clp(monto)}".replace(",", "."))
 
     def _exportar(self):
         if self._vista is None or len(self._vista) == 0:
@@ -416,8 +503,7 @@ class GestorApp:
             return
         ruta = ex.exportar_excel(self._vista)
         self._status(f"Exportado: {ruta}")
-        if Messagebox.yesno(f"Se generó el archivo:\n\n{ruta}\n\n¿Abrirlo ahora?",
-                            "Exportado") == "Yes":
+        if Messagebox.yesno(f"Se generó el archivo:\n\n{ruta}\n\n¿Abrirlo ahora?", "Exportado") == "Yes":
             try:
                 os.startfile(ruta)
             except Exception:  # noqa: BLE001
@@ -428,10 +514,11 @@ def main():
     root = tb.Window(themename="cosmo", title="Gestor de Compras 2.0")
     GestorApp(root)
     root.update_idletasks()
-    w, h = 1240, 770
+    w, h = 1320, 800
     x = max(0, (root.winfo_screenwidth() - w) // 2)
     y = max(0, (root.winfo_screenheight() - h) // 3)
     root.geometry(f"{w}x{h}+{x}+{y}")
+    root.minsize(1120, 700)
     root.lift()
     root.attributes("-topmost", True)
     root.after(900, lambda: root.attributes("-topmost", False))
