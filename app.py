@@ -125,6 +125,7 @@ class GestorApp:
         self._estilos()
         self._barra_marca()
         self._encabezado_pagina()
+        self._kpis()
         self._semaforo()
         self._toolbar()
         self._tarjeta_tabla()
@@ -168,13 +169,35 @@ class GestorApp:
 
         right = tb.Frame(ph)
         right.pack(side="right")
-        self.btn_generar = tb.Button(right, text="Actualizar",
+        self.btn_generar = tb.Button(right, text="↻  Actualizar",
                                      bootstyle="secondary-outline", command=self._generar)
         self.btn_generar.pack(side="left", padx=(0, 8))
-        self.btn_export = tb.Button(right, text="Exportar a Excel",
+        self.btn_export = tb.Button(right, text="↧  Exportar a Excel",
                                     bootstyle="primary", command=self._exportar,
                                     state="disabled")
         self.btn_export.pack(side="left")
+
+    # ---- KPIs grandes (tarjetas de métricas) ----
+    def _kpis(self):
+        row = tb.Frame(self.root, padding=(20, 10, 20, 2))
+        row.pack(fill="x")
+        self.kpi = {}
+        defs = [
+            ("urg_monto", "Urgente a reponer", "#C0392B"),
+            ("urg_cnt", "Productos urgentes", "#B9770E"),
+            ("tot_monto", "Inversión total sugerida", "#0B5CAB"),
+            ("tot_cnt", "Productos con orden", "#3E3E3C"),
+        ]
+        for i, (key, label, color) in enumerate(defs):
+            card = tk.Frame(row, bg="white", highlightbackground=CARD_BORDER,
+                            highlightthickness=1)
+            card.pack(side="left", expand=True, fill="x", padx=(0 if i == 0 else 12, 0))
+            val = tk.Label(card, text="—", bg="white", fg=color,
+                           font=("Segoe UI", 22, "bold"))
+            val.pack(anchor="w", padx=16, pady=(12, 0))
+            tk.Label(card, text=label, bg="white", fg="#5C5C5C",
+                     font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(0, 12))
+            self.kpi[key] = val
 
     # ---- semáforo (píldoras de estado) ----
     def _semaforo(self):
@@ -288,6 +311,12 @@ class GestorApp:
         vc = ordenes["URGENCIA"].value_counts()
         for key, (pill, txt) in self.sem.items():
             pill.config(text=f"{int(vc.get(key, 0)):,}  ·  {txt}")
+        # KPIs grandes.
+        urg = ordenes[ordenes["URGENCIA"].isin(["QUIEBRE", "POR AGOTARSE"])]
+        self.kpi["urg_monto"].config(text=fmt_clp(urg["MONTO_ESTIMADO"].sum()))
+        self.kpi["urg_cnt"].config(text=fmt_num(len(urg)))
+        self.kpi["tot_monto"].config(text=fmt_clp(ordenes["MONTO_ESTIMADO"].sum()))
+        self.kpi["tot_cnt"].config(text=fmt_num(len(ordenes)))
         # Poblar los desplegables de categoría y familia con lo presente en los datos.
         cats = sorted({cap(x) for x in ordenes["RUBRO"].dropna().unique()
                        if str(x).lower() != "nan"})
@@ -400,7 +429,7 @@ def main():
 
     # Centrar y traer al frente.
     root.update_idletasks()
-    w, h = 1240, 700
+    w, h = 1240, 770
     x = max(0, (root.winfo_screenwidth() - w) // 2)
     y = max(0, (root.winfo_screenheight() - h) // 3)
     root.geometry(f"{w}x{h}+{x}+{y}")
