@@ -76,6 +76,9 @@ PESO_DEFAULT_RUBRO = {
 }
 PESO_DEFAULT_GLOBAL = 2.0     # kg/unidad si no hay peso ni RUBRO mapeado
 PESO_MAX_PLAUSIBLE_KG = 2000  # descarta parseos absurdos del nombre
+# Catálogo de pesos obtenidos por búsqueda web (Sodimac/Easy/Construmart). Máxima
+# confianza: si un CODIGO está aquí, su peso manda sobre el parseo y los defaults.
+RUTA_CATALOGO_PESOS = Path(__file__).parent / "data" / "catalogo_pesos.csv"
 
 # Carpeta donde se guardan las órdenes generadas.
 CARPETA_SALIDAS = Path(__file__).parent / "salidas"

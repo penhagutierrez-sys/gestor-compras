@@ -6,6 +6,7 @@ MONTO. El PESO es ESTIMADO (solo ~9% de los productos trae peso real en el nombr
 el cemento en saco es el caso preciso). Por eso el nº de camiones es una ESTIMACIÓN
 y se rotula como tal en la interfaz, junto con el % de la carga con peso real.
 """
+import os
 import re
 import unicodedata
 
@@ -13,6 +14,20 @@ import numpy as np
 import pandas as pd
 
 import config
+
+
+def cargar_catalogo_pesos():
+    """Catálogo CODIGO->peso_kg de búsquedas web (Sodimac/Easy/Construmart). {} si no existe."""
+    ruta = getattr(config, "RUTA_CATALOGO_PESOS", None)
+    if not ruta or not os.path.exists(ruta):
+        return {}
+    try:
+        c = pd.read_csv(ruta, dtype={"CODIGO": str})
+        c = c[pd.to_numeric(c["PESO_KG"], errors="coerce").fillna(0) > 0]
+        return dict(zip(c["CODIGO"].astype(str).str.strip(),
+                        pd.to_numeric(c["PESO_KG"], errors="coerce")))
+    except Exception:  # noqa: BLE001
+        return {}
 
 # "(1.120 K)" = 1,120 kg  |  "25 KG" = 25 kg  (convención del maestro de productos)
 _PAT_PAR = re.compile(r"\(\s*(\d+[.,]?\d*)\s*K\s*\)")
@@ -66,10 +81,14 @@ def consolidar(inv, prov=None):
     df.loc[df["PROVEEDOR"].eq("") | df["PROVEEDOR"].str.lower().eq("nan"), "PROVEEDOR"] = "Sin proveedor"
     df["ORIGEN"] = df["PROVEEDOR"].map(_origen)
 
-    # Peso: del nombre (confiable) o default por RUBRO (estimado).
+    # Peso: catálogo web (máx. confianza) -> del nombre (confiable) -> default RUBRO (estimado).
     defaults = {_norm(k): v for k, v in config.PESO_DEFAULT_RUBRO.items()}
+    catalogo = cargar_catalogo_pesos()
     pu, conf = [], []
-    for nombre, rubro in zip(df["PRODUCTO"], df["RUBRO"]):
+    for codigo, nombre, rubro in zip(df["CODIGO"], df["PRODUCTO"], df["RUBRO"]):
+        if codigo in catalogo:
+            pu.append(float(catalogo[codigo])); conf.append(True)
+            continue
         p = _peso_del_nombre(nombre)
         if p is not None:
             pu.append(p); conf.append(True)
