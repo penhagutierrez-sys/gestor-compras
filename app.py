@@ -17,6 +17,7 @@ import ttkbootstrap as tb
 from ttkbootstrap.constants import *  # noqa: F401,F403
 from ttkbootstrap.dialogs import Messagebox
 
+import config
 from motor import pipeline
 from motor import exportar as ex
 
@@ -122,6 +123,7 @@ class GestorApp:
         ("ESTADO", "Estado", 96, "center"),
         ("STOCK_ACTUAL", "Stock", 66, "e"),
         ("COBERTURA_DIAS", "Cobertura (d)", 92, "e"),
+        ("PUNTO_REORDEN", "Pto. reorden", 96, "e"),
         ("SUGERIDO_PEDIR", "Sugerido", 84, "e"),
         ("MONTO_ESTIMADO", "Monto compra", 112, "e"),
     ]
@@ -240,7 +242,7 @@ class GestorApp:
         izq.grid(row=0, column=0, sticky="w")
         tb.Label(izq, text="Salud de inventario",
                  font=("Segoe UI Semibold", 16)).pack(anchor="w")
-        tb.Label(izq, text="Qué reponer y dónde hay capital inmovilizado — por días de cobertura",
+        tb.Label(izq, text=f"Punto de reorden y cobertura · lead time {config.LEAD_TIME_GLOBAL_DIAS} días (supuesto, configurable)",
                  font=("Segoe UI", 9), bootstyle="secondary").pack(anchor="w")
         der = tb.Frame(head)
         der.grid(row=0, column=1, sticky="e")
@@ -489,6 +491,7 @@ class GestorApp:
                 fila["CODIGO"], str(fila["PRODUCTO"])[:60],
                 cap(fila["RUBRO"]), cap(fila["FAMILIA"]), fila["ABC"],
                 EST_TXT.get(est, est), stock_txt, cob_txt,
+                fmt_num(fila["PUNTO_REORDEN"]),
                 fmt_num(fila["SUGERIDO_PEDIR"]), fmt_clp(fila["MONTO_ESTIMADO"]),
             )
             tag = EST_TAG.get(est, "impar" if i % 2 else "par")

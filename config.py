@@ -37,5 +37,16 @@ DIAS_CRITICO = 7       # <= 1 semana de cobertura -> reponer urgente
 DIAS_BAJO = 30         # <= 1 mes                 -> por reponer
 DIAS_SALUDABLE = 90    # <= 3 meses               -> saludable; más = sobrestock
 
+# --- PUNTO DE REORDEN (modelo de nivel de servicio por clase ABC) ---
+# ROP = demanda_diaria * lead_time + stock_seguridad
+# stock_seguridad = Z * sigma_diaria * sqrt(lead_time)   (King si hubiera sigma de lead time)
+Z_POR_CLASE = {"A": 2.05, "B": 1.65, "C": 1.28}   # nivel de servicio 98% / 95% / 90%
+LEAD_TIME_GLOBAL_DIAS = 7        # días de entrega del proveedor (SUPUESTO, no es dato real)
+LEAD_TIME_POR_RUBRO = {}         # override opcional por categoría, ej: {"FIERRO": 21}
+SIGMA_LEAD_TIME_DIAS = 0         # variabilidad del lead time (0 = sin datos de proveedor)
+SIGMA_FLOOR_FRAC = 0.5           # piso de la σ diaria como fracción de la demanda diaria
+SS_MAX_DIAS = 45                 # techo del stock de seguridad (en días de demanda)
+DIAS_OBJETIVO = 30               # cobertura objetivo al reponer (nivel máximo S)
+
 # Carpeta donde se guardan las órdenes generadas.
 CARPETA_SALIDAS = Path(__file__).parent / "salidas"

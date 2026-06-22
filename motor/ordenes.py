@@ -45,11 +45,31 @@ def clasificar_inventario(res, stock=None):
     df["COBERTURA_DIAS"] = np.where(
         df["DEMANDA_DIARIA"] > 0, df["STOCK_ACTUAL"] / df["DEMANDA_DIARIA"], np.nan)
 
-    # --- Cuánto pedir = objetivo de cobertura (con colchón XYZ) - stock ---
-    factor = df["XYZ"].map(config.FACTOR_SEGURIDAD).fillna(1.0)
-    df["DEMANDA_OBJETIVO"] = df["PRONOSTICO_MENSUAL"] * config.MESES_COBERTURA * factor
-    sugerido = (df["DEMANDA_OBJETIVO"] - df["STOCK_ACTUAL"]).clip(lower=0)
-    df["SUGERIDO_PEDIR"] = np.ceil(sugerido).astype(int)
+    # --- PUNTO DE REORDEN (modelo de nivel de servicio por clase ABC) ---
+    # Lead time por categoría si existe, si no el global.
+    lt_map = {k.upper(): v for k, v in config.LEAD_TIME_POR_RUBRO.items()}
+    lt = df["RUBRO"].astype(str).str.upper().map(lt_map).fillna(config.LEAD_TIME_GLOBAL_DIAS)
+    df["LEAD_TIME_DIAS"] = lt
+    # Z según nivel de servicio por clase ABC (A más exigente que C).
+    z = df["ABC"].map(config.Z_POR_CLASE).fillna(config.Z_POR_CLASE["C"])
+
+    # σ diaria con piso (estabiliza con pocos meses) y techo del stock de seguridad.
+    sigma_d = df["SIGMA_MENSUAL"].fillna(0) / np.sqrt(30.0)
+    sigma_d = np.maximum(sigma_d, config.SIGMA_FLOOR_FRAC * df["DEMANDA_DIARIA"])
+    ss = z * np.sqrt(lt * sigma_d ** 2 + (df["DEMANDA_DIARIA"] * config.SIGMA_LEAD_TIME_DIAS) ** 2)
+    ss = np.minimum(ss, config.SS_MAX_DIAS * df["DEMANDA_DIARIA"])
+    df["STOCK_SEGURIDAD"] = np.ceil(ss)
+
+    # ROP = demanda durante el lead time + stock de seguridad. S = nivel máximo.
+    df["PUNTO_REORDEN"] = np.ceil(df["DEMANDA_DIARIA"] * lt + ss)
+    df["NIVEL_MAX_S"] = np.ceil(df["DEMANDA_DIARIA"] * (lt + config.DIAS_OBJETIVO) + ss)
+
+    # Se pide solo cuando el stock toca el punto de reorden (y hay demanda real).
+    con_demanda = df["DEMANDA_DIARIA"] > 0
+    df["BAJO_PUNTO_REORDEN"] = con_demanda & (df["STOCK_ACTUAL"] <= df["PUNTO_REORDEN"])
+    pedir = np.where(df["BAJO_PUNTO_REORDEN"],
+                     np.ceil((df["NIVEL_MAX_S"] - df["STOCK_ACTUAL"]).clip(lower=0)), 0)
+    df["SUGERIDO_PEDIR"] = pedir.astype(int)
     df["MONTO_ESTIMADO"] = (df["SUGERIDO_PEDIR"] * df["COSTO_UNIT"]).round(0)
 
     # --- Estado de salud de inventario ---

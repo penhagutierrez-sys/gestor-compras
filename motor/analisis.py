@@ -92,10 +92,15 @@ def pronostico(piv):
     tot_2026 = piv[cols_2026].sum(axis=1) if cols_2026 else cero
     tendencia = tot_2026 / tot_2025.replace(0, np.nan)  # NaN si no vendía en 2025
 
+    # Desviación estándar de la demanda mensual (solo 2026, para no inflarla con
+    # los ceros del otro año). Es la base del stock de seguridad del punto de reorden.
+    sigma = piv[cols_2026].std(axis=1) if len(cols_2026) >= 2 else cero
+
     return pd.DataFrame({
         "PRONOSTICO_MENSUAL": prom_3m,
         "PROM_MENSUAL_2026": prom_2026,
         "TENDENCIA_25_26": tendencia,
+        "SIGMA_MENSUAL": sigma,
     })
 
 
