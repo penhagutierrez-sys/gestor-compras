@@ -65,10 +65,11 @@ def cap(x):
 
 
 TODAS_FAMILIAS = "Todas las familias"
+TODAS_CATEGORIAS = "Todas las categorías"
 
 
-def filtrar(ordenes, modo, texto="", familia=None):
-    """Aplica el modo, la familia y la búsqueda de texto sobre las órdenes."""
+def filtrar(ordenes, modo, texto="", familia=None, categoria=None):
+    """Aplica el modo, la categoría, la familia y la búsqueda sobre las órdenes."""
     df = ordenes.sort_values("VENTA_TOTAL", ascending=False)  # más vendidos primero
     m = modo.lower()
 
@@ -85,7 +86,9 @@ def filtrar(ordenes, modo, texto="", familia=None):
         df = df[df["ABC"] == modo.strip()[-1]]
     # "Todos": no se filtra nada
 
-    # Filtro por familia (desplegable de arriba).
+    # Filtros en cascada: categoría y familia (desplegables de arriba).
+    if categoria and categoria != TODAS_CATEGORIAS:
+        df = df[df["RUBRO"].astype(str).str.upper() == categoria.upper()]
     if familia and familia != TODAS_FAMILIAS:
         df = df[df["FAMILIA"].astype(str).str.upper() == familia.upper()]
 
@@ -195,15 +198,22 @@ class GestorApp:
         fila1 = tb.Frame(wrap)
         fila1.pack(fill="x")
         tb.Label(fila1, text="Ver", bootstyle="secondary").pack(side="left", padx=(0, 6))
-        self.cmb = tb.Combobox(fila1, values=MODOS, state="readonly", width=30,
+        self.cmb = tb.Combobox(fila1, values=MODOS, state="readonly", width=24,
                                bootstyle="primary")
         self.cmb.current(0)
-        self.cmb.pack(side="left", padx=(0, 18))
+        self.cmb.pack(side="left", padx=(0, 16))
         self.cmb.bind("<<ComboboxSelected>>", lambda e: self._aplicar_filtro())
+
+        tb.Label(fila1, text="Categoría", bootstyle="secondary").pack(side="left", padx=(0, 6))
+        self.cmb_categoria = tb.Combobox(fila1, values=[TODAS_CATEGORIAS], state="readonly",
+                                         width=24, bootstyle="primary")
+        self.cmb_categoria.current(0)
+        self.cmb_categoria.pack(side="left", padx=(0, 16))
+        self.cmb_categoria.bind("<<ComboboxSelected>>", lambda e: self._cambio_categoria())
 
         tb.Label(fila1, text="Familia", bootstyle="secondary").pack(side="left", padx=(0, 6))
         self.cmb_familia = tb.Combobox(fila1, values=[TODAS_FAMILIAS], state="readonly",
-                                       width=30, bootstyle="primary")
+                                       width=26, bootstyle="primary")
         self.cmb_familia.current(0)
         self.cmb_familia.pack(side="left")
         self.cmb_familia.bind("<<ComboboxSelected>>", lambda e: self._aplicar_filtro())
@@ -278,10 +288,12 @@ class GestorApp:
         vc = ordenes["URGENCIA"].value_counts()
         for key, (pill, txt) in self.sem.items():
             pill.config(text=f"{int(vc.get(key, 0)):,}  ·  {txt}")
-        # Poblar el desplegable de familias con las presentes en los datos.
-        fams = sorted({cap(x) for x in ordenes["FAMILIA"].dropna().unique()
+        # Poblar los desplegables de categoría y familia con lo presente en los datos.
+        cats = sorted({cap(x) for x in ordenes["RUBRO"].dropna().unique()
                        if str(x).lower() != "nan"})
-        self.cmb_familia["values"] = [TODAS_FAMILIAS] + fams
+        self.cmb_categoria["values"] = [TODAS_CATEGORIAS] + cats
+        self.cmb_categoria.current(0)
+        self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(ordenes)
         self.cmb_familia.current(0)
         self._aplicar_filtro()
         self._status(f"Listo — {len(ordenes):,} productos a pedir en total.")
@@ -320,11 +332,27 @@ class GestorApp:
         for key, titulo, _a, _b in self.COLS:
             self.tree.heading(key, text=titulo + (flecha if key == self._sort_col else ""))
 
+    def _familias_de(self, df):
+        """Lista de familias (en formato Título) presentes en un DataFrame."""
+        return sorted({cap(x) for x in df["FAMILIA"].dropna().unique()
+                       if str(x).lower() != "nan"})
+
+    def _cambio_categoria(self):
+        """Al cambiar la categoría, reduce las familias a las de esa categoría."""
+        cat = self.cmb_categoria.get()
+        if cat and cat != TODAS_CATEGORIAS:
+            sub = self.ordenes[self.ordenes["RUBRO"].astype(str).str.upper() == cat.upper()]
+        else:
+            sub = self.ordenes
+        self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(sub)
+        self.cmb_familia.set(TODAS_FAMILIAS)
+        self._aplicar_filtro()
+
     def _aplicar_filtro(self):
         if self.ordenes is None:
             return
         df = filtrar(self.ordenes, self.cmb.get(), self.busqueda.get(),
-                     self.cmb_familia.get())
+                     self.cmb_familia.get(), self.cmb_categoria.get())
         df = self._ordenar_df(df)
         self._encabezados()
         self._vista = df
