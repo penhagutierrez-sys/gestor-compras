@@ -58,6 +58,12 @@ def fmt_clp(v):
     return "$ " + fmt_num(v)
 
 
+def cap(x):
+    """Texto de categoría/familia en formato Título (PINTURA -> Pintura)."""
+    s = str(x)
+    return "" if s.lower() == "nan" else s.title()
+
+
 def filtrar(ordenes, modo, texto=""):
     """Aplica el modo elegido y la búsqueda de texto sobre las órdenes."""
     df = ordenes.sort_values("VENTA_TOTAL", ascending=False)  # más vendidos primero
@@ -78,23 +84,25 @@ def filtrar(ordenes, modo, texto=""):
 
     texto = (texto or "").strip().upper()
     if texto:
-        m2 = (df["PRODUCTO"].astype(str).str.upper().str.contains(texto, regex=False)
-              | df["CODIGO"].astype(str).str.upper().str.contains(texto, regex=False))
-        df = df[m2]
+        def tiene(col):
+            return df[col].astype(str).str.upper().str.contains(texto, regex=False)
+        df = df[tiene("PRODUCTO") | tiene("CODIGO") | tiene("RUBRO") | tiene("FAMILIA")]
     return df
 
 
 # --- La ventana -------------------------------------------------------------
 class GestorApp:
     COLS = [
-        ("CODIGO", "Código", 110, "w"),
-        ("PRODUCTO", "Producto", 320, "w"),
-        ("ABC", "ABC", 50, "center"),
-        ("URGENCIA", "Estado", 120, "center"),
-        ("STOCK_ACTUAL", "Stock", 75, "e"),
-        ("PRONOSTICO_MENSUAL", "Pronóstico/mes", 110, "e"),
-        ("SUGERIDO_PEDIR", "Sugerido pedir", 110, "e"),
-        ("MONTO_ESTIMADO", "Monto estimado", 130, "e"),
+        ("CODIGO", "Código", 105, "w"),
+        ("PRODUCTO", "Producto", 240, "w"),
+        ("RUBRO", "Categoría", 140, "w"),
+        ("FAMILIA", "Familia", 150, "w"),
+        ("ABC", "ABC", 48, "center"),
+        ("URGENCIA", "Estado", 110, "center"),
+        ("STOCK_ACTUAL", "Stock", 70, "e"),
+        ("PRONOSTICO_MENSUAL", "Pronóstico/mes", 105, "e"),
+        ("SUGERIDO_PEDIR", "Sugerido pedir", 105, "e"),
+        ("MONTO_ESTIMADO", "Monto estimado", 125, "e"),
     ]
 
     def __init__(self, root):
@@ -209,10 +217,13 @@ class GestorApp:
         self.tree.tag_configure("par", background="white")
         self.tree.tag_configure("impar", background="#FAFAFA")
 
+        sbx = tb.Scrollbar(card, orient="horizontal", command=self.tree.xview,
+                           bootstyle="round")
+        sbx.pack(side="bottom", fill="x")
         sb = tb.Scrollbar(card, orient="vertical", command=self.tree.yview,
                           bootstyle="round")
-        self.tree.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
+        self.tree.configure(yscrollcommand=sb.set, xscrollcommand=sbx.set)
         self.tree.pack(side="left", fill="both", expand=True, padx=1, pady=1)
 
     # ---- barra de estado ----
@@ -298,6 +309,8 @@ class GestorApp:
             valores = (
                 fila["CODIGO"],
                 str(fila["PRODUCTO"])[:60],
+                cap(fila["RUBRO"]),
+                cap(fila["FAMILIA"]),
                 fila["ABC"],
                 URG_TXT.get(urg, urg),
                 stock_txt,
@@ -332,7 +345,7 @@ def main():
 
     # Centrar y traer al frente.
     root.update_idletasks()
-    w, h = 1120, 700
+    w, h = 1240, 700
     x = max(0, (root.winfo_screenwidth() - w) // 2)
     y = max(0, (root.winfo_screenheight() - h) // 3)
     root.geometry(f"{w}x{h}+{x}+{y}")

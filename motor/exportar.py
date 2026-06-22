@@ -12,7 +12,8 @@ import config
 COLUMNAS = {
     "CODIGO": "Código",
     "PRODUCTO": "Producto",
-    "RUBRO": "Rubro",
+    "RUBRO": "Categoría",
+    "FAMILIA": "Familia",
     "MARCA": "Marca",
     "ABC": "ABC",
     "URGENCIA": "Estado",
