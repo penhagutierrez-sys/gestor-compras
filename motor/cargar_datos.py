@@ -96,6 +96,20 @@ def cargar_stock(ruta, hoja="Export"):
     return agregar_stock(cargar_stock_raw(ruta, hoja))
 
 
+def cargar_proveedores(ruta, hoja="Datos Maepro"):
+    """
+    Maestro de productos -> proveedor (hoja 'Datos Maepro'). Devuelve [CODIGO, PROVEEDOR].
+    Cruza por CODIGO con las ventas (~83%). El proveedor en blanco queda como "".
+    """
+    p = pd.read_excel(ruta, sheet_name=hoja, dtype=str)
+    p = p.rename(columns={"NOMBRE PROVEEDOR": "PROVEEDOR"})
+    p["CODIGO"] = p["CODIGO"].astype(str).str.strip()
+    p["PROVEEDOR"] = (p["PROVEEDOR"].fillna("").astype(str).str.strip()
+                      .replace({"nan": "", "NAN": ""}))
+    p = p[p["CODIGO"].ne("") & p["CODIGO"].str.lower().ne("nan")]
+    return p.drop_duplicates("CODIGO")[["CODIGO", "PROVEEDOR"]]
+
+
 def stock_por_codigo(stock_nombre, productos):
     """
     Convierte el stock-por-nombre en stock-por-CODIGO, usando la tabla de

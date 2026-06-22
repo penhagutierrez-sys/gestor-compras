@@ -48,5 +48,34 @@ SIGMA_FLOOR_FRAC = 0.5           # piso de la σ diaria como fracción de la dem
 SS_MAX_DIAS = 45                 # techo del stock de seguridad (en días de demanda)
 DIAS_OBJETIVO = 30               # cobertura objetivo al reponer (nivel máximo S)
 
+# --- CONSOLIDACIÓN EN CAMIÓN (agrupar sugeridos por proveedor/origen) ---
+# Maestro de productos con su proveedor (cruza por CODIGO ~83% con ventas).
+RUTA_PROVEEDORES = r"C:\Users\Thinkpad\OneDrive - FERRETERIA SOLUCENTER LTDA\Escritorio\Solucenter\Solicitud Foto-Descripción por Producto-Proveedor.xlsx"
+HOJA_PROVEEDORES = "Datos Maepro"
+# Proveedor (en mayúsculas) que CONTENGA la keyword -> origen. Primer match gana.
+MAPEO_ORIGENES = [
+    ("CHILEMAT", "Santiago · Chilemat (general)"),
+    ("POLPAICO", "Concepción · Cemento"),
+    ("BIO BIO", "Concepción · Cemento"),
+    ("BIOBIO", "Concepción · Cemento"),
+    ("CEMENTO", "Concepción · Cemento"),
+    ("MADETALCA", "Los Ángeles · Polines"),
+]
+# Camión: carga útil legal en Chile (~Decreto 158 MOP, conservador). Igual para ambos
+# modelos; FH500 = ruta larga Santiago→Arauco, FM460 = reparto regional/cemento/polines.
+CAMION_PAYLOAD_KG = 28000
+# Peso estimado por RUBRO (kg/unidad) cuando el nombre NO trae peso. SON SUPUESTOS,
+# ajustables; el peso del nombre (ej. "25 KG") siempre manda sobre estos.
+PESO_DEFAULT_RUBRO = {
+    "MATERIALES DE CONSTRUCCION": 10.0, "OBRA GRUESA": 15.0, "ESTRUCTURAS Y TECHOS": 12.0,
+    "REVESTIMIENTO": 8.0, "REVESTIMIENTOS": 8.0, "MADERA Y TABLERO": 10.0,
+    "PINTURA": 5.0, "PINTURAS": 5.0, "GASFITERIA": 2.5, "BANO Y COCINA": 4.0,
+    "ELECTRICIDAD": 1.0, "ILUMINACION": 1.0, "HERRAMIENTAS": 1.5, "HER. Y FERRETERIA": 1.0,
+    "FERRETERIA": 0.5, "JARDIN": 3.0, "CLIMATIZACION": 5.0, "HOGAR Y TERMINACIONES": 2.0,
+    "OUTDOOR Y CAMPING": 2.0, "ASEO": 1.5, "ORGANIZACION": 2.0, "INSUMOS": 1.0,
+}
+PESO_DEFAULT_GLOBAL = 2.0     # kg/unidad si no hay peso ni RUBRO mapeado
+PESO_MAX_PLAUSIBLE_KG = 2000  # descarta parseos absurdos del nombre
+
 # Carpeta donde se guardan las órdenes generadas.
 CARPETA_SALIDAS = Path(__file__).parent / "salidas"

@@ -20,6 +20,7 @@ from ttkbootstrap.dialogs import Messagebox
 import config
 from motor import pipeline
 from motor import exportar as ex
+from motor import consolidar
 
 # --- Estados ---------------------------------------------------------------
 EST_TXT = {
@@ -57,6 +58,19 @@ RAIL_ITEMS = [
     ("Sin rotación", ["SIN ROTACION"], "#7F8C8D"),
     ("Sin dato", ["SIN DATO"], "#BDC3C7"),
     ("Todos", None, "#5C5C5C"),
+    ("Consolidación", "__CONSOLIDAR__", "#2E5E3A"),   # vista especial (no es un estado)
+]
+
+# Columnas de la vista de consolidación (agrupada por proveedor).
+CONSOL_COLS = [
+    ("ORIGEN", "Origen", 165, "w"),
+    ("PROVEEDOR", "Proveedor", 240, "w"),
+    ("PRODUCTOS", "Productos", 78, "e"),
+    ("UNIDADES", "Unidades", 90, "e"),
+    ("MONTO", "Monto compra", 120, "e"),
+    ("KG", "Kg estimados", 100, "e"),
+    ("CAMIONES", "Camiones", 78, "center"),
+    ("PCT_CONF", "Peso real", 70, "center"),
 ]
 
 TODAS_FAMILIAS = "Todas las familias"
@@ -170,9 +184,11 @@ class GestorApp:
         self._sort_asc = True
         self._estados_activos = ["QUIEBRE", "CRITICO", "BAJO"]  # vista inicial
         self._crudos = None           # (df_ventas, stock_raw) cacheado
+        self._prov = None             # maestro de proveedores cacheado
         self._sucursal = None         # código de sucursal (None = todas)
         self._suc_map = {TODAS_SUCURSALES: None}
         self._first = True
+        self._vista_consol = False
 
         self._estilos()
         self._barra_marca()
@@ -363,6 +379,7 @@ class GestorApp:
     def _tabla(self, main):
         card = tk.Frame(main, bg="white", highlightbackground=CARD_BORDER, highlightthickness=1)
         card.grid(row=2, column=0, columnspan=12, sticky="nsew")
+        self._card_tabla = card
         cols = [c[0] for c in self.COLS]
         self.tree = ttk.Treeview(card, columns=cols, show="headings")
         for key, titulo, ancho, anchor in self.COLS:
@@ -378,6 +395,48 @@ class GestorApp:
         sb.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=sb.set, xscrollcommand=sbx.set)
         self.tree.pack(side="left", fill="both", expand=True, padx=1, pady=1)
+        self._construir_consol(main)   # tarjeta de consolidación (oculta hasta seleccionarla)
+
+    def _construir_consol(self, main):
+        card = tk.Frame(main, bg="white", highlightbackground=CARD_BORDER, highlightthickness=1)
+        self._card_consol = card  # se hace grid_remove implícito: no se grid-ea aún
+        self._consol_banner = tk.Label(card, text="", bg="#FBF3E8", fg="#8A4B12",
+                                       font=(FONT, 8), anchor="w", padx=10, pady=5, justify="left")
+        self._consol_banner.pack(fill="x")
+        cont = tk.Frame(card, bg="white")
+        cont.pack(fill="both", expand=True)
+        cols = [c[0] for c in CONSOL_COLS]
+        self.tree_consol = ttk.Treeview(cont, columns=cols, show="headings")
+        for key, titulo, ancho, anchor in CONSOL_COLS:
+            self.tree_consol.heading(key, text=titulo)
+            self.tree_consol.column(key, width=ancho, anchor=anchor, stretch=(key == "PROVEEDOR"))
+        sb = tb.Scrollbar(cont, orient="vertical", command=self.tree_consol.yview, bootstyle="round")
+        sb.pack(side="right", fill="y")
+        self.tree_consol.configure(yscrollcommand=sb.set)
+        self.tree_consol.pack(side="left", fill="both", expand=True, padx=1, pady=1)
+
+    def _mostrar_consolidacion(self):
+        """Arma y muestra el resumen de compra consolidado por proveedor/origen."""
+        self._card_tabla.grid_remove()
+        self._card_consol.grid(row=2, column=0, columnspan=12, sticky="nsew")
+        det = consolidar.consolidar(self.inv, self._prov)
+        r = consolidar.resumen(det, por="PROVEEDOR")
+        self.tree_consol.delete(*self.tree_consol.get_children())
+        for _, x in r.iterrows():
+            self.tree_consol.insert("", "end", values=(
+                x["ORIGEN"], str(x["PROVEEDOR"])[:44], fmt_num(x["PRODUCTOS"]),
+                fmt_num(x["UNIDADES"]), fmt_clp(x["MONTO"]), fmt_num(x["KG"]),
+                fmt_num(x["CAMIONES"]), f"{int(x['PCT_CONF'])}%"))
+        monto = float(det["MONTO_ESTIMADO"].sum()) or 1.0
+        kg = float(det["PESO_TOTAL_EST"].sum()) or 1.0
+        sinprov = float(det.loc[det["PROVEEDOR"] == "Sin proveedor", "MONTO_ESTIMADO"].sum())
+        pct_real = det["PESO_CONF_KG"].sum() / kg * 100
+        self._consol_banner.config(text=(
+            f"Consolidación de {len(det):,} productos a comprar · {self.cmb_sucursal.get()}.   "
+            f"Camiones = ESTIMACIÓN (FH500/FM460 ~28 t c/u; preciso solo en cemento).   "
+            f"Peso real: {pct_real:.0f}% de la carga · Sin proveedor: {sinprov / monto * 100:.0f}% del monto"
+        ).replace(",", "."))
+        self.resumen.config(text="Consolidación por proveedor")
 
     # ---- carga ----
     def _status(self, msg):
@@ -396,8 +455,10 @@ class GestorApp:
         try:
             prog = lambda m: self.root.after(0, self._status, m)  # noqa: E731
             if self._crudos is None:
-                self._crudos = pipeline.cargar_crudos(prog)
-                self.root.after(0, self._poblar_sucursales, self._crudos[0])
+                df, stock_raw, prov = pipeline.cargar_crudos(prog)
+                self._crudos = (df, stock_raw)
+                self._prov = prov
+                self.root.after(0, self._poblar_sucursales, df)
             inv = pipeline.clasificar(*self._crudos, sucursal=self._sucursal, progreso=prog)
             self.root.after(0, self._listo, inv)
         except Exception as e:  # noqa: BLE001
@@ -428,6 +489,8 @@ class GestorApp:
         if self._first:
             self._first = False
             self._drill(None, "Todos")   # abre en panorama global
+        elif self._vista_consol:
+            self._mostrar_consolidacion()  # estaba en consolidación: refresca esa vista
         else:
             self._aplicar_filtro()       # preserva el estado seleccionado
         self._status(f"Listo — {len(inv):,} productos · {self.cmb_sucursal.get()}".replace(",", "."))
@@ -437,6 +500,9 @@ class GestorApp:
         vc = scope["ESTADO"].value_counts()
         for label, info in self._rail_items.items():
             est = info["estados"]
+            if isinstance(est, str):       # item "Consolidación" (no es un estado)
+                info["cnt"].config(text="")
+                continue
             total = len(scope) if est is None else int(sum(vc.get(e, 0) for e in est))
             info["cnt"].config(text=fmt_num(total))
 
@@ -495,15 +561,22 @@ class GestorApp:
         self._aplicar_filtro()
 
     def _drill(self, estados, label):
-        """Clic en un item del rail: filtra por esos estados y resalta el item."""
-        self._estados_activos = estados
+        """Clic en un item del rail: cambia la vista y resalta el item."""
         for lb, info in self._rail_items.items():
             sel = (lb == label)
             bg = RAIL_SEL if sel else RAIL_BG
             info["acc"].config(bg=info["color"] if sel else RAIL_BG)
             for w in info["widgets"]:
-                if w not in (info["acc"],):
+                if w is not info["acc"]:
                     w.config(bg=bg)
+        if estados == "__CONSOLIDAR__":          # vista especial de camiones
+            self._vista_consol = True
+            self._mostrar_consolidacion()
+            return
+        self._vista_consol = False
+        self._estados_activos = estados
+        self._card_consol.grid_remove()
+        self._card_tabla.grid()
         self._aplicar_filtro()
 
     def _ordenar(self, col):

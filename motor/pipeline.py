@@ -13,14 +13,20 @@ from . import ordenes as oc
 
 
 def cargar_crudos(progreso=None):
-    """Lee ventas y stock crudos (una sola vez). Devuelve (df_ventas, stock_raw)."""
+    """Lee ventas, stock y proveedores crudos (una sola vez). (df_ventas, stock_raw, prov)."""
     if progreso:
         progreso("Cargando ventas y stock...")
     df = cd.cargar_ventas(config.RUTA_VENTAS, config.HOJA_VENTAS)
     stock_raw = None
     if config.RUTA_STOCK:
         stock_raw = cd.cargar_stock_raw(config.RUTA_STOCK, config.HOJA_STOCK)
-    return df, stock_raw
+    prov = None
+    if getattr(config, "RUTA_PROVEEDORES", None):
+        try:
+            prov = cd.cargar_proveedores(config.RUTA_PROVEEDORES, config.HOJA_PROVEEDORES)
+        except Exception:  # noqa: BLE001  (proveedores es opcional)
+            prov = None
+    return df, stock_raw, prov
 
 
 def clasificar(df, stock_raw, sucursal=None, progreso=None):
@@ -52,5 +58,5 @@ def clasificar(df, stock_raw, sucursal=None, progreso=None):
 
 def ejecutar(progreso=None, sucursal=None):
     """Corre todo el flujo de una (carga + clasifica). Para uso simple/terminal."""
-    df, stock_raw = cargar_crudos(progreso)
+    df, stock_raw, _prov = cargar_crudos(progreso)
     return clasificar(df, stock_raw, sucursal=sucursal, progreso=progreso)
