@@ -62,23 +62,26 @@ RAIL_ITEMS = [
 TODAS_FAMILIAS = "Todas las familias"
 TODAS_CATEGORIAS = "Todas las categorías"
 
-# --- Marca / paleta (verde bosque + naranja terracota, fondo claro) + fuente Inter ---
+# --- Marca / paleta: verde + naranja como ACENTO, fondo BLANCO, líneas gris pizarra (Danish) ---
 FONT = "Inter"
 FONT_SEMI = "Inter SemiBold"
+GREEN = "#2E5E3A"      # acento primario
+ORANGE = "#C75B1E"
+INK = "#1F2933"        # texto principal (gris pizarra oscuro)
+SLATE = "#64748B"      # texto secundario
+LINE = "#E2E8F0"       # hairlines gris pizarra, sutiles
 PALETA = {
-    "primary": "#2E5E3A", "secondary": "#6B7280", "success": "#3A7D4E",
+    "primary": "#2E5E3A", "secondary": "#64748B", "success": "#3A7D4E",
     "info": "#5E8C7B", "warning": "#C75B1E", "danger": "#B23B2E",
-    "light": "#F7F6F2", "dark": "#2B2B2B", "bg": "#F7F6F2", "fg": "#2B2B2B",
-    "selectbg": "#2E5E3A", "selectfg": "#FFFFFF", "border": "#D9D7D2",
-    "inputfg": "#2B2B2B", "inputbg": "#FFFFFF", "active": "#ECEBE6",
+    "light": "#FFFFFF", "dark": INK, "bg": "#FFFFFF", "fg": INK,
+    "selectbg": "#2E5E3A", "selectfg": "#FFFFFF", "border": LINE,
+    "inputfg": INK, "inputbg": "#FFFFFF", "active": "#F1F5F9",
 }
-NAVY = "#2E5E3A"        # barra de marca (verde bosque)
-NAVY_SUB = "#C7D9CC"
-CARD_BORDER = "#D9D7D2"
-RAIL_BG = "#EFEEE9"     # rail claro y cálido
-RAIL_SEL = "#DCE7DD"    # selección verde suave
-GUTTER = 12
-PAD = 20
+CARD_BORDER = LINE
+RAIL_BG = "#FFFFFF"
+RAIL_SEL = "#F1F5F9"    # selección sutil (gris pizarra muy claro)
+GUTTER = 14
+PAD = 22
 
 
 def _aplicar_tema(root):
@@ -175,22 +178,24 @@ class GestorApp:
     # ---- estilos ----
     def _estilos(self):
         st = self.root.style
-        st.configure("Treeview", rowheight=29, font=(FONT, 10),
+        st.configure("Treeview", rowheight=30, font=(FONT, 10),
                      background="white", fieldbackground="white", borderwidth=0)
         st.configure("Treeview.Heading", font=(FONT_SEMI, 10),
-                     padding=(10, 9), background="#F3F3F3", foreground="#3E3E3C", relief="flat")
-        st.map("Treeview.Heading", background=[("active", "#E9E9E9")])
-        st.map("Treeview", background=[("selected", "#D8E6F6")],
-               foreground=[("selected", "#161616")])
+                     padding=(10, 10), background="#F8FAFC", foreground=INK, relief="flat")
+        st.map("Treeview.Heading", background=[("active", "#F1F5F9")])
+        st.map("Treeview", background=[("selected", "#EAF1EC")],
+               foreground=[("selected", INK)])
 
     def _barra_marca(self):
-        bar = tk.Frame(self.root, bg=NAVY, height=54)
+        bar = tk.Frame(self.root, bg="#FFFFFF", height=58)
         bar.pack(fill="x", side="top")
         bar.pack_propagate(False)
-        tk.Label(bar, text="Gestor de Compras", bg=NAVY, fg="white",
-                 font=(FONT_SEMI, 15)).pack(side="left", padx=20)
-        tk.Label(bar, text="Salud de inventario · Ferretería Solucenter", bg=NAVY,
-                 fg=NAVY_SUB, font=(FONT, 9)).pack(side="left", pady=(6, 0))
+        tk.Frame(bar, bg=GREEN, width=4, height=26).pack(side="left", padx=(PAD, 12), pady=16)
+        tk.Label(bar, text="Gestor de Compras", bg="#FFFFFF", fg=INK,
+                 font=(FONT_SEMI, 15)).pack(side="left", pady=(15, 0))
+        tk.Label(bar, text="Salud de inventario · Ferretería Solucenter", bg="#FFFFFF",
+                 fg=SLATE, font=(FONT, 9)).pack(side="left", padx=(12, 0), pady=(21, 0))
+        tk.Frame(self.root, bg=LINE, height=1).pack(fill="x", side="top")  # hairline
 
     def _barra_estado(self):
         self.estado = tb.Label(self.root, text="", anchor="w", padding=(PAD, 4),
@@ -201,16 +206,18 @@ class GestorApp:
     def _shell(self):
         shell = tb.Frame(self.root)
         shell.pack(fill="both", expand=True, side="top")
-        shell.columnconfigure(0, weight=0, minsize=232)
-        shell.columnconfigure(1, weight=1)
+        shell.columnconfigure(0, weight=0, minsize=236)
+        shell.columnconfigure(1, weight=0)   # hairline vertical
+        shell.columnconfigure(2, weight=1)
         shell.rowconfigure(0, weight=1)
         self._rail(shell)
+        tk.Frame(shell, bg=LINE, width=1).grid(row=0, column=1, sticky="ns")
         self._main(shell)
 
     def _rail(self, shell):
         rail = tk.Frame(shell, bg=RAIL_BG)
         rail.grid(row=0, column=0, sticky="nsew")
-        tk.Label(rail, text="ESTADO DE INVENTARIO", bg=RAIL_BG, fg="#7A869A",
+        tk.Label(rail, text="ESTADO DE INVENTARIO", bg=RAIL_BG, fg=SLATE,
                  font=(FONT_SEMI, 8)).pack(anchor="w", padx=16, pady=(14, 6))
 
         self._rail_items = {}
@@ -223,10 +230,10 @@ class GestorApp:
             inner.pack(side="left", fill="x", expand=True, padx=(10, 12), pady=6)
             dot = tk.Label(inner, text="●", bg=RAIL_BG, fg=color, font=(FONT, 9))
             dot.pack(side="left", padx=(0, 8))
-            lbl = tk.Label(inner, text=label, bg=RAIL_BG, fg="#2C3E50",
+            lbl = tk.Label(inner, text=label, bg=RAIL_BG, fg=INK,
                            anchor="w", font=(FONT, 10))
             lbl.pack(side="left")
-            cnt = tk.Label(inner, text="0", bg=RAIL_BG, fg="#7A869A",
+            cnt = tk.Label(inner, text="0", bg=RAIL_BG, fg=SLATE,
                            font=(FONT_SEMI, 9))
             cnt.pack(side="right")
             for w in (it, inner, dot, lbl, cnt):
@@ -236,22 +243,22 @@ class GestorApp:
                                        "widgets": (it, inner, dot, lbl, cnt)}
 
         # Bloque inferior: capital inmovilizado.
-        sep = tk.Frame(rail, bg="#E1E6EC", height=1)
+        sep = tk.Frame(rail, bg=LINE, height=1)
         sep.pack(fill="x", padx=12, pady=(12, 0))
         cap_box = tk.Frame(rail, bg=RAIL_BG)
         cap_box.pack(fill="x", side="bottom", padx=16, pady=14)
-        tk.Label(cap_box, text="CAPITAL INMOVILIZADO", bg=RAIL_BG, fg="#7A869A",
+        tk.Label(cap_box, text="CAPITAL INMOVILIZADO", bg=RAIL_BG, fg=SLATE,
                  font=(FONT_SEMI, 8)).pack(anchor="w", pady=(0, 4))
         self.lbl_cap_sobre = tk.Label(cap_box, text="Sobrestock  —", bg=RAIL_BG,
-                                      fg="#34495E", font=(FONT, 9), anchor="w")
+                                      fg=INK, font=(FONT, 9), anchor="w")
         self.lbl_cap_sobre.pack(anchor="w")
         self.lbl_cap_dead = tk.Label(cap_box, text="Sin rotación  —", bg=RAIL_BG,
-                                     fg="#34495E", font=(FONT, 9), anchor="w")
+                                     fg=INK, font=(FONT, 9), anchor="w")
         self.lbl_cap_dead.pack(anchor="w")
 
     def _main(self, shell):
-        main = tb.Frame(shell, padding=(PAD, 12, PAD, 12))
-        main.grid(row=0, column=1, sticky="nsew")
+        main = tb.Frame(shell, padding=(PAD, 14, PAD, 14))
+        main.grid(row=0, column=2, sticky="nsew")
         for c in range(12):
             main.columnconfigure(c, weight=1, uniform="g")
         main.rowconfigure(4, weight=1)  # la tabla crece
