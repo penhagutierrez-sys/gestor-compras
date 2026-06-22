@@ -8,10 +8,13 @@ from motor import exportar as ex
 
 
 def main():
-    ordenes = pipeline.ejecutar(progreso=lambda m: print(" •", m))
-    monto = ordenes["MONTO_ESTIMADO"].sum()
-    print(f"\n{len(ordenes):,} productos a pedir | monto estimado: ${monto:,.0f}")
-    ruta = ex.exportar_excel(ordenes)
+    inv = pipeline.ejecutar(progreso=lambda m: print(" •", m))
+    print("\nEstado de inventario:")
+    print(inv["ESTADO"].value_counts().to_string())
+    reponer = inv[inv["ESTADO"].isin(["QUIEBRE", "CRITICO", "BAJO"])]
+    monto = reponer["MONTO_ESTIMADO"].sum()
+    print(f"\nPor reponer: {len(reponer):,} productos | compra estimada: ${monto:,.0f}")
+    ruta = ex.exportar_excel(reponer)
     print(f"Excel generado: {ruta}")
 
 

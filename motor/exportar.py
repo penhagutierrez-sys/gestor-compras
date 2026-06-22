@@ -16,14 +16,15 @@ COLUMNAS = {
     "FAMILIA": "Familia",
     "MARCA": "Marca",
     "ABC": "ABC",
-    "URGENCIA": "Estado",
     "XYZ": "XYZ",
-    "PRONOSTICO_MENSUAL": "Pronóstico/mes",
+    "ESTADO": "Estado",
     "STOCK_ACTUAL": "Stock actual",
-    "COBERTURA_MESES": "Cobertura (meses)",
+    "COBERTURA_DIAS": "Cobertura (días)",
+    "PRONOSTICO_MENSUAL": "Pronóstico/mes",
     "SUGERIDO_PEDIR": "Sugerido pedir",
     "COSTO_UNIT": "Costo unit.",
     "MONTO_ESTIMADO": "Monto estimado",
+    "VALOR_STOCK": "Valor stock",
 }
 
 
@@ -36,7 +37,7 @@ def exportar_excel(ordenes, ruta=None):
 
     tabla = ordenes[list(COLUMNAS.keys())].copy()
     tabla["PRONOSTICO_MENSUAL"] = tabla["PRONOSTICO_MENSUAL"].round(1)
-    tabla["COBERTURA_MESES"] = tabla["COBERTURA_MESES"].round(2)
+    tabla["COBERTURA_DIAS"] = tabla["COBERTURA_DIAS"].round(0)
     tabla = tabla.rename(columns=COLUMNAS)
 
     tabla.to_excel(ruta, index=False, sheet_name="OC sugeridas")
@@ -70,7 +71,8 @@ def _dar_formato(ruta, tabla):
     for fila in ws.iter_rows(min_row=2):
         for celda in fila:
             titulo = tabla.columns[celda.column - 1]
-            if titulo in ("Monto estimado", "Costo unit.", "Stock actual", "Sugerido pedir"):
+            if titulo in ("Monto estimado", "Costo unit.", "Stock actual",
+                          "Sugerido pedir", "Valor stock", "Cobertura (días)"):
                 celda.number_format = "#,##0"
 
     wb.save(ruta)

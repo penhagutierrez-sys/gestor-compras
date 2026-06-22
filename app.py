@@ -1,9 +1,9 @@
 """
 GESTOR DE COMPRAS 2.0 — Ventana de escritorio (UI moderna)
 ==========================================================
-Interfaz estilo enterprise (inspirada en Salesforce Lightning) construida con
-ttkbootstrap: barra de marca, encabezado de página, semáforo de estado con
-píldoras, y una tabla de datos limpia dentro de una tarjeta.
+Dashboard de SALUD DE INVENTARIO (estilo retail: Lowe's / Sodimac / RELEX / Slim4):
+clasifica cada producto por días de cobertura y muestra qué reponer y dónde hay
+capital inmovilizado (sobrestock / sin rotación).
 
 Para abrirla:  python app.py   (o doble clic en "Abrir Gestor de Compras.bat")
 """
@@ -13,36 +13,63 @@ import tkinter as tk
 from tkinter import ttk
 
 import ttkbootstrap as tb
-from ttkbootstrap.constants import *  # noqa: F401,F403  (LEFT, RIGHT, X, BOTH, ...)
+from ttkbootstrap.constants import *  # noqa: F401,F403
 from ttkbootstrap.dialogs import Messagebox
 
 from motor import pipeline
 from motor import exportar as ex
 
-# Modos de filtro (el primero es el que se muestra al abrir).
+# --- Estados de salud de inventario ---------------------------------------
+EST_TXT = {
+    "QUIEBRE": "Quiebre", "CRITICO": "Crítico", "BAJO": "Bajo",
+    "SALUDABLE": "Saludable", "SOBRESTOCK": "Sobrestock",
+    "SIN ROTACION": "Sin rotación", "SIN DATO": "Sin dato",
+}
+# Tinte de fila por estado (semáforo).
+EST_ROW = {
+    "QUIEBRE": "#F5B7B1", "CRITICO": "#F8CBA6", "BAJO": "#FBE7A1",
+    "SALUDABLE": "#ABEBC6", "SOBRESTOCK": "#AED6F1",
+    "SIN ROTACION": "#D5D8DC", "SIN DATO": "#ECECEC",
+}
+EST_TAG = {e: e.lower().replace(" ", "_") for e in EST_TXT}
+# Orden por gravedad para el ordenamiento de la columna Estado.
+EST_ORDEN = {"QUIEBRE": 0, "CRITICO": 1, "BAJO": 2, "SIN DATO": 3,
+             "SALUDABLE": 4, "SOBRESTOCK": 5, "SIN ROTACION": 6}
+
+# Vistas (modo) -> estados que muestran.
 MODOS = [
-    "Reponer ya (stock 0 o por agotarse)",
-    "Solo quiebre (stock 0)",
-    "Top 50 más vendidos",
-    "Clase A",
+    "Por reponer (quiebre + crítico + bajo)",
+    "Quiebre (sin stock)",
+    "Crítico (urgente)",
+    "Saludable",
+    "Sobrestock (exceso)",
+    "Sin rotación (lento)",
     "Sin dato de stock",
     "Todos",
 ]
-
-# Texto del estado (el color va en la píldora y el fondo de la fila).
-URG_TXT = {
-    "QUIEBRE": "Quiebre",
-    "POR AGOTARSE": "Por agotarse",
-    "SIN DATO": "Sin dato",
-    "OK": "Cubierto",
+ESTADOS_POR_MODO = {
+    MODOS[0]: ["QUIEBRE", "CRITICO", "BAJO"],
+    MODOS[1]: ["QUIEBRE"],
+    MODOS[2]: ["CRITICO"],
+    MODOS[3]: ["SALUDABLE"],
+    MODOS[4]: ["SOBRESTOCK"],
+    MODOS[5]: ["SIN ROTACION"],
+    MODOS[6]: ["SIN DATO"],
 }
-# Estilo de color (semántica de ttkbootstrap) por estado.
-PILL = {"QUIEBRE": "danger", "POR AGOTARSE": "warning", "OK": "success", "SIN DATO": "secondary"}
-# Tinte suave de fila por estado.
-ROW = {"QUIEBRE": "#FDE7E9", "POR AGOTARSE": "#FEF3E8", "OK": "#EBF7ED", "SIN DATO": "#F4F4F5"}
-TAG = {"QUIEBRE": "quiebre", "POR AGOTARSE": "agotarse", "OK": "ok", "SIN DATO": "sindato"}
 
-# Paleta de la barra de marca (azul Salesforce).
+# Semáforo (píldoras): etiqueta, estados que agrupa, color.
+SEM_DEFS = [
+    ("Quiebre", ["QUIEBRE"], "danger"),
+    ("Por reponer", ["CRITICO", "BAJO"], "warning"),
+    ("Saludable", ["SALUDABLE"], "success"),
+    ("Sobrestock", ["SOBRESTOCK"], "info"),
+    ("Sin rotación", ["SIN ROTACION"], "dark"),
+    ("Sin dato", ["SIN DATO"], "secondary"),
+]
+
+TODAS_FAMILIAS = "Todas las familias"
+TODAS_CATEGORIAS = "Todas las categorías"
+
 NAVY = "#032D60"
 NAVY_SUB = "#9FB6D6"
 CARD_BORDER = "#DDDBDA"
@@ -50,12 +77,18 @@ CARD_BORDER = "#DDDBDA"
 
 # --- Funciones "puras" (sin ventana), fáciles de probar ---------------------
 def fmt_num(v):
-    """123456.7 -> '123.457' (formato chileno, separador de miles con punto)."""
     return f"{int(round(float(v))):,}".replace(",", ".")
 
 
 def fmt_clp(v):
     return "$ " + fmt_num(v)
+
+
+def fmt_dias(v):
+    """Días de cobertura; '—' si no aplica (sin demanda o sin dato)."""
+    if v is None or v != v:  # NaN
+        return "—"
+    return fmt_num(v)
 
 
 def cap(x):
@@ -64,29 +97,14 @@ def cap(x):
     return "" if s.lower() == "nan" else s.title()
 
 
-TODAS_FAMILIAS = "Todas las familias"
-TODAS_CATEGORIAS = "Todas las categorías"
+def filtrar(inv, modo, texto="", familia=None, categoria=None):
+    """Aplica vista (estado), categoría, familia y búsqueda sobre el inventario."""
+    df = inv.sort_values("VENTA_TOTAL", ascending=False)  # más vendidos primero
 
+    estados = ESTADOS_POR_MODO.get(modo)
+    if estados:
+        df = df[df["ESTADO"].isin(estados)]
 
-def filtrar(ordenes, modo, texto="", familia=None, categoria=None):
-    """Aplica el modo, la categoría, la familia y la búsqueda sobre las órdenes."""
-    df = ordenes.sort_values("VENTA_TOTAL", ascending=False)  # más vendidos primero
-    m = modo.lower()
-
-    if modo.startswith("Reponer"):
-        df = df[df["URGENCIA"].isin(["QUIEBRE", "POR AGOTARSE"])]
-    elif "quiebre" in m:
-        df = df[df["URGENCIA"] == "QUIEBRE"]
-    elif "sin dato" in m:
-        df = df[df["URGENCIA"] == "SIN DATO"]
-    elif modo.startswith("Top"):
-        n = int("".join(c for c in modo if c.isdigit()))
-        df = df.head(n)
-    elif modo.startswith("Clase"):
-        df = df[df["ABC"] == modo.strip()[-1]]
-    # "Todos": no se filtra nada
-
-    # Filtros en cascada: categoría y familia (desplegables de arriba).
     if categoria and categoria != TODAS_CATEGORIAS:
         df = df[df["RUBRO"].astype(str).str.upper() == categoria.upper()]
     if familia and familia != TODAS_FAMILIAS:
@@ -104,23 +122,23 @@ def filtrar(ordenes, modo, texto="", familia=None, categoria=None):
 class GestorApp:
     COLS = [
         ("CODIGO", "Código", 105, "w"),
-        ("PRODUCTO", "Producto", 240, "w"),
-        ("RUBRO", "Categoría", 140, "w"),
-        ("FAMILIA", "Familia", 150, "w"),
-        ("ABC", "ABC", 48, "center"),
-        ("URGENCIA", "Estado", 110, "center"),
-        ("STOCK_ACTUAL", "Stock", 70, "e"),
-        ("PRONOSTICO_MENSUAL", "Pronóstico/mes", 105, "e"),
-        ("SUGERIDO_PEDIR", "Sugerido pedir", 105, "e"),
-        ("MONTO_ESTIMADO", "Monto estimado", 125, "e"),
+        ("PRODUCTO", "Producto", 230, "w"),
+        ("RUBRO", "Categoría", 130, "w"),
+        ("FAMILIA", "Familia", 140, "w"),
+        ("ABC", "ABC", 46, "center"),
+        ("ESTADO", "Estado", 96, "center"),
+        ("STOCK_ACTUAL", "Stock", 66, "e"),
+        ("COBERTURA_DIAS", "Cobertura (d)", 92, "e"),
+        ("SUGERIDO_PEDIR", "Sugerido", 84, "e"),
+        ("MONTO_ESTIMADO", "Monto compra", 112, "e"),
     ]
 
     def __init__(self, root):
         self.root = root
-        self.ordenes = None
+        self.inv = None
         self._vista = None
-        self._sort_col = None     # columna por la que se ordena (None = por venta)
-        self._sort_asc = True     # ascendente / descendente
+        self._sort_col = None
+        self._sort_asc = True
 
         self._estilos()
         self._barra_marca()
@@ -131,7 +149,7 @@ class GestorApp:
         self._tarjeta_tabla()
         self._barra_estado()
 
-        self._generar()  # carga los datos en segundo plano al abrir
+        self._generar()
 
     # ---- estilos base ----
     def _estilos(self):
@@ -142,31 +160,27 @@ class GestorApp:
                      padding=(10, 10), background="#F3F3F3", foreground="#3E3E3C",
                      relief="flat")
         st.map("Treeview.Heading", background=[("active", "#E9E9E9")])
-        st.map("Treeview",
-               background=[("selected", "#D8E6F6")],
+        st.map("Treeview", background=[("selected", "#D8E6F6")],
                foreground=[("selected", "#161616")])
 
-    # ---- barra de marca (azul) ----
     def _barra_marca(self):
         bar = tk.Frame(self.root, bg=NAVY, height=56)
         bar.pack(fill="x")
         bar.pack_propagate(False)
         tk.Label(bar, text="Gestor de Compras", bg=NAVY, fg="white",
                  font=("Segoe UI Semibold", 15)).pack(side="left", padx=20)
-        tk.Label(bar, text="Abastecimiento · Ferretería Solucenter", bg=NAVY,
+        tk.Label(bar, text="Salud de inventario · Ferretería Solucenter", bg=NAVY,
                  fg=NAVY_SUB, font=("Segoe UI", 9)).pack(side="left", pady=(6, 0))
 
-    # ---- encabezado de página (título + acciones) ----
     def _encabezado_pagina(self):
         ph = tb.Frame(self.root, padding=(20, 16, 20, 6))
         ph.pack(fill="x")
         left = tb.Frame(ph)
         left.pack(side="left", fill="x", expand=True)
-        tb.Label(left, text="Productos a reponer",
+        tb.Label(left, text="Salud de inventario",
                  font=("Segoe UI Semibold", 16)).pack(anchor="w")
-        tb.Label(left, text="Sugerencias de compra priorizadas por urgencia y rotación",
+        tb.Label(left, text="Qué reponer y dónde hay capital inmovilizado — por días de cobertura",
                  font=("Segoe UI", 9), bootstyle="secondary").pack(anchor="w")
-
         right = tb.Frame(ph)
         right.pack(side="right")
         self.btn_generar = tb.Button(right, text="↻  Actualizar",
@@ -177,51 +191,44 @@ class GestorApp:
                                     state="disabled")
         self.btn_export.pack(side="left")
 
-    # ---- KPIs grandes (tarjetas de métricas) ----
     def _kpis(self):
         row = tb.Frame(self.root, padding=(20, 10, 20, 2))
         row.pack(fill="x")
         self.kpi = {}
         defs = [
-            ("urg_monto", "Urgente a reponer", "#C0392B"),
-            ("urg_cnt", "Productos urgentes", "#B9770E"),
-            ("tot_monto", "Inversión total sugerida", "#0B5CAB"),
-            ("tot_cnt", "Productos con orden", "#3E3E3C"),
+            ("rep_monto", "Por reponer (compra)", "#C0392B"),
+            ("rep_cnt", "Productos por reponer", "#B9770E"),
+            ("over", "Capital en sobrestock", "#1F6FB2"),
+            ("dead", "Capital sin rotación", "#566573"),
         ]
         for i, (key, label, color) in enumerate(defs):
             card = tk.Frame(row, bg="white", highlightbackground=CARD_BORDER,
                             highlightthickness=1)
             card.pack(side="left", expand=True, fill="x", padx=(0 if i == 0 else 12, 0))
             val = tk.Label(card, text="—", bg="white", fg=color,
-                           font=("Segoe UI", 22, "bold"))
+                           font=("Segoe UI", 20, "bold"))
             val.pack(anchor="w", padx=16, pady=(12, 0))
             tk.Label(card, text=label, bg="white", fg="#5C5C5C",
                      font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(0, 12))
             self.kpi[key] = val
 
-    # ---- semáforo (píldoras de estado) ----
     def _semaforo(self):
         bar = tb.Frame(self.root, padding=(20, 6))
         bar.pack(fill="x")
         self.sem = {}
-        etiquetas = (("QUIEBRE", "En quiebre"), ("POR AGOTARSE", "Por agotarse"),
-                     ("OK", "Cubiertos"), ("SIN DATO", "Sin dato"))
-        for key, txt in etiquetas:
-            pill = tb.Label(bar, text=f"0  ·  {txt}", bootstyle=f"inverse-{PILL[key]}",
+        for txt, estados, color in SEM_DEFS:
+            pill = tb.Label(bar, text=f"0  ·  {txt}", bootstyle=f"inverse-{color}",
                             font=("Segoe UI Semibold", 10), padding=(12, 6))
             pill.pack(side="left", padx=(0, 10))
-            self.sem[key] = (pill, txt)
+            self.sem[txt] = (pill, estados)
 
-    # ---- toolbar (filtro + búsqueda + contador) ----
     def _toolbar(self):
         wrap = tb.Frame(self.root, padding=(20, 8))
         wrap.pack(fill="x")
-
-        # Fila 1: filtros (Ver + Familia).
         fila1 = tb.Frame(wrap)
         fila1.pack(fill="x")
         tb.Label(fila1, text="Ver", bootstyle="secondary").pack(side="left", padx=(0, 6))
-        self.cmb = tb.Combobox(fila1, values=MODOS, state="readonly", width=24,
+        self.cmb = tb.Combobox(fila1, values=MODOS, state="readonly", width=30,
                                bootstyle="primary")
         self.cmb.current(0)
         self.cmb.pack(side="left", padx=(0, 16))
@@ -229,30 +236,27 @@ class GestorApp:
 
         tb.Label(fila1, text="Categoría", bootstyle="secondary").pack(side="left", padx=(0, 6))
         self.cmb_categoria = tb.Combobox(fila1, values=[TODAS_CATEGORIAS], state="readonly",
-                                         width=24, bootstyle="primary")
+                                         width=22, bootstyle="primary")
         self.cmb_categoria.current(0)
         self.cmb_categoria.pack(side="left", padx=(0, 16))
         self.cmb_categoria.bind("<<ComboboxSelected>>", lambda e: self._cambio_categoria())
 
         tb.Label(fila1, text="Familia", bootstyle="secondary").pack(side="left", padx=(0, 6))
         self.cmb_familia = tb.Combobox(fila1, values=[TODAS_FAMILIAS], state="readonly",
-                                       width=26, bootstyle="primary")
+                                       width=24, bootstyle="primary")
         self.cmb_familia.current(0)
         self.cmb_familia.pack(side="left")
         self.cmb_familia.bind("<<ComboboxSelected>>", lambda e: self._aplicar_filtro())
 
-        # Fila 2: búsqueda + contador.
         fila2 = tb.Frame(wrap)
         fila2.pack(fill="x", pady=(8, 0))
         tb.Label(fila2, text="Buscar", bootstyle="secondary").pack(side="left", padx=(0, 6))
         self.busqueda = tb.Entry(fila2, width=40)
         self.busqueda.pack(side="left")
         self.busqueda.bind("<KeyRelease>", lambda e: self._aplicar_filtro())
-
         self.resumen = tb.Label(fila2, text="", font=("Segoe UI", 9), bootstyle="secondary")
         self.resumen.pack(side="right")
 
-    # ---- tarjeta con la tabla ----
     def _tarjeta_tabla(self):
         outer = tb.Frame(self.root, padding=(20, 6, 20, 16))
         outer.pack(fill="both", expand=True)
@@ -263,11 +267,10 @@ class GestorApp:
         cols = [c[0] for c in self.COLS]
         self.tree = ttk.Treeview(card, columns=cols, show="headings")
         for key, titulo, ancho, anchor in self.COLS:
-            # Clic en el encabezado = ordenar por esa columna.
             self.tree.heading(key, text=titulo, command=lambda k=key: self._ordenar(k))
             self.tree.column(key, width=ancho, anchor=anchor, stretch=(key == "PRODUCTO"))
-        for key, color in ROW.items():
-            self.tree.tag_configure(TAG[key], background=color)
+        for est, tag in EST_TAG.items():
+            self.tree.tag_configure(tag, background=EST_ROW[est])
         self.tree.tag_configure("par", background="white")
         self.tree.tag_configure("impar", background="#FAFAFA")
 
@@ -280,7 +283,6 @@ class GestorApp:
         self.tree.configure(yscrollcommand=sb.set, xscrollcommand=sbx.set)
         self.tree.pack(side="left", fill="both", expand=True, padx=1, pady=1)
 
-    # ---- barra de estado ----
     def _barra_estado(self):
         self.estado = tb.Label(self.root, text="", anchor="w", padding=(20, 4),
                                bootstyle="secondary", font=("Segoe UI", 8))
@@ -298,42 +300,59 @@ class GestorApp:
 
     def _worker(self):
         try:
-            ordenes = pipeline.ejecutar(
-                progreso=lambda m: self.root.after(0, self._status, m))
-            self.root.after(0, self._listo, ordenes)
+            inv = pipeline.ejecutar(progreso=lambda m: self.root.after(0, self._status, m))
+            self.root.after(0, self._listo, inv)
         except Exception as e:  # noqa: BLE001
             self.root.after(0, self._error, str(e))
 
-    def _listo(self, ordenes):
-        self.ordenes = ordenes
+    def _listo(self, inv):
+        self.inv = inv
         self.btn_generar.config(state="normal")
         self.btn_export.config(state="normal")
-        vc = ordenes["URGENCIA"].value_counts()
-        for key, (pill, txt) in self.sem.items():
-            pill.config(text=f"{int(vc.get(key, 0)):,}  ·  {txt}")
-        # KPIs grandes.
-        urg = ordenes[ordenes["URGENCIA"].isin(["QUIEBRE", "POR AGOTARSE"])]
-        self.kpi["urg_monto"].config(text=fmt_clp(urg["MONTO_ESTIMADO"].sum()))
-        self.kpi["urg_cnt"].config(text=fmt_num(len(urg)))
-        self.kpi["tot_monto"].config(text=fmt_clp(ordenes["MONTO_ESTIMADO"].sum()))
-        self.kpi["tot_cnt"].config(text=fmt_num(len(ordenes)))
-        # Poblar los desplegables de categoría y familia con lo presente en los datos.
-        cats = sorted({cap(x) for x in ordenes["RUBRO"].dropna().unique()
+
+        vc = inv["ESTADO"].value_counts()
+        for txt, (pill, estados) in self.sem.items():
+            total = int(sum(vc.get(e, 0) for e in estados))
+            pill.config(text=f"{total:,}  ·  {txt}".replace(",", "."))
+
+        rep = inv[inv["ESTADO"].isin(["QUIEBRE", "CRITICO", "BAJO"])]
+        over = inv[inv["ESTADO"] == "SOBRESTOCK"]
+        dead = inv[inv["ESTADO"] == "SIN ROTACION"]
+        self.kpi["rep_monto"].config(text=fmt_clp(rep["MONTO_ESTIMADO"].sum()))
+        self.kpi["rep_cnt"].config(text=fmt_num(len(rep)))
+        self.kpi["over"].config(text=fmt_clp(over["VALOR_STOCK"].sum()))
+        self.kpi["dead"].config(text=fmt_clp(dead["VALOR_STOCK"].sum()))
+
+        cats = sorted({cap(x) for x in inv["RUBRO"].dropna().unique()
                        if str(x).lower() != "nan"})
         self.cmb_categoria["values"] = [TODAS_CATEGORIAS] + cats
         self.cmb_categoria.current(0)
-        self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(ordenes)
+        self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(inv)
         self.cmb_familia.current(0)
+
         self._aplicar_filtro()
-        self._status(f"Listo — {len(ordenes):,} productos a pedir en total.")
+        self._status(f"Listo — {len(inv):,} productos clasificados.")
 
     def _error(self, msg):
         self.btn_generar.config(state="normal")
         self._status("Error: " + msg)
         Messagebox.show_error(msg, "Error al generar")
 
+    def _familias_de(self, df):
+        return sorted({cap(x) for x in df["FAMILIA"].dropna().unique()
+                       if str(x).lower() != "nan"})
+
+    def _cambio_categoria(self):
+        cat = self.cmb_categoria.get()
+        if cat and cat != TODAS_CATEGORIAS:
+            sub = self.inv[self.inv["RUBRO"].astype(str).str.upper() == cat.upper()]
+        else:
+            sub = self.inv
+        self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(sub)
+        self.cmb_familia.set(TODAS_FAMILIAS)
+        self._aplicar_filtro()
+
     def _ordenar(self, col):
-        """Clic en encabezado: ordena por esa columna; segundo clic invierte."""
         if self._sort_col == col:
             self._sort_asc = not self._sort_asc
         else:
@@ -342,45 +361,25 @@ class GestorApp:
         self._aplicar_filtro()
 
     def _ordenar_df(self, df):
-        """Ordena por la columna elegida usando el VALOR real (no el texto)."""
         col = self._sort_col
         if not col:
-            return df  # sin orden manual: queda el de filtrar() (más vendidos)
-        if col == "URGENCIA":
-            # Orden por gravedad, no alfabético.
-            orden = {"QUIEBRE": 0, "POR AGOTARSE": 1, "SIN DATO": 2, "OK": 3}
-            clave = df["URGENCIA"].map(orden)
+            return df
+        if col == "ESTADO":
+            clave = df["ESTADO"].map(EST_ORDEN)
             return (df.assign(_k=clave)
                       .sort_values("_k", ascending=self._sort_asc, kind="stable")
                       .drop(columns="_k"))
         return df.sort_values(col, ascending=self._sort_asc, kind="stable")
 
     def _encabezados(self):
-        """Pone la flecha ▲/▼ en la columna por la que se está ordenando."""
         flecha = " ▲" if self._sort_asc else " ▼"
         for key, titulo, _a, _b in self.COLS:
             self.tree.heading(key, text=titulo + (flecha if key == self._sort_col else ""))
 
-    def _familias_de(self, df):
-        """Lista de familias (en formato Título) presentes en un DataFrame."""
-        return sorted({cap(x) for x in df["FAMILIA"].dropna().unique()
-                       if str(x).lower() != "nan"})
-
-    def _cambio_categoria(self):
-        """Al cambiar la categoría, reduce las familias a las de esa categoría."""
-        cat = self.cmb_categoria.get()
-        if cat and cat != TODAS_CATEGORIAS:
-            sub = self.ordenes[self.ordenes["RUBRO"].astype(str).str.upper() == cat.upper()]
-        else:
-            sub = self.ordenes
-        self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(sub)
-        self.cmb_familia.set(TODAS_FAMILIAS)
-        self._aplicar_filtro()
-
     def _aplicar_filtro(self):
-        if self.ordenes is None:
+        if self.inv is None:
             return
-        df = filtrar(self.ordenes, self.cmb.get(), self.busqueda.get(),
+        df = filtrar(self.inv, self.cmb.get(), self.busqueda.get(),
                      self.cmb_familia.get(), self.cmb_categoria.get())
         df = self._ordenar_df(df)
         self._encabezados()
@@ -388,25 +387,28 @@ class GestorApp:
 
         self.tree.delete(*self.tree.get_children())
         for i, (_, fila) in enumerate(df.iterrows()):
-            urg = fila["URGENCIA"]
-            stock_txt = fmt_num(fila["STOCK_ACTUAL"]) if fila["STOCK_CONOCIDO"] else "?"
+            est = fila["ESTADO"]
+            conocido = fila["STOCK_CONOCIDO"]
+            stock_txt = fmt_num(fila["STOCK_ACTUAL"]) if conocido else "?"
+            cob_txt = fmt_dias(fila["COBERTURA_DIAS"]) if conocido else "—"
             valores = (
                 fila["CODIGO"],
                 str(fila["PRODUCTO"])[:60],
                 cap(fila["RUBRO"]),
                 cap(fila["FAMILIA"]),
                 fila["ABC"],
-                URG_TXT.get(urg, urg),
+                EST_TXT.get(est, est),
                 stock_txt,
-                fmt_num(fila["PRONOSTICO_MENSUAL"]),
+                cob_txt,
                 fmt_num(fila["SUGERIDO_PEDIR"]),
                 fmt_clp(fila["MONTO_ESTIMADO"]),
             )
-            tag = TAG.get(urg, "impar" if i % 2 else "par")
+            tag = EST_TAG.get(est, "impar" if i % 2 else "par")
             self.tree.insert("", "end", values=valores, tags=(tag,))
 
         monto = df["MONTO_ESTIMADO"].sum()
-        self.resumen.config(text=f"{len(df):,} productos  ·  {fmt_clp(monto)}")
+        self.resumen.config(text=f"{len(df):,} productos  ·  compra {fmt_clp(monto)}"
+                            .replace(",", "."))
 
     def _exportar(self):
         if self._vista is None or len(self._vista) == 0:
@@ -414,11 +416,10 @@ class GestorApp:
             return
         ruta = ex.exportar_excel(self._vista)
         self._status(f"Exportado: {ruta}")
-        resp = Messagebox.yesno(f"Se generó el archivo:\n\n{ruta}\n\n¿Abrirlo ahora?",
-                                "Exportado")
-        if resp == "Yes":
+        if Messagebox.yesno(f"Se generó el archivo:\n\n{ruta}\n\n¿Abrirlo ahora?",
+                            "Exportado") == "Yes":
             try:
-                os.startfile(ruta)  # abre el Excel (Windows)
+                os.startfile(ruta)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -426,8 +427,6 @@ class GestorApp:
 def main():
     root = tb.Window(themename="cosmo", title="Gestor de Compras 2.0")
     GestorApp(root)
-
-    # Centrar y traer al frente.
     root.update_idletasks()
     w, h = 1240, 770
     x = max(0, (root.winfo_screenwidth() - w) // 2)
@@ -437,7 +436,6 @@ def main():
     root.attributes("-topmost", True)
     root.after(900, lambda: root.attributes("-topmost", False))
     root.focus_force()
-
     root.mainloop()
 
 

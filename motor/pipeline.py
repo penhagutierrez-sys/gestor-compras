@@ -33,6 +33,6 @@ def ejecutar(progreso=None):
         n = int(stock["STOCK_ACTUAL"].notna().sum())
         avisar(f"Stock cruzado: {n:,}/{len(stock):,} productos ({n/len(stock)*100:.0f}%)")
 
-    avisar("Generando órdenes de compra...")
-    ordenes = oc.generar_ordenes(res, stock=stock)
-    return ordenes
+    avisar("Clasificando salud de inventario...")
+    inventario = oc.clasificar_inventario(res, stock=stock)
+    return inventario
