@@ -23,7 +23,7 @@ from motor import exportar as ex
 EST_TXT = {
     "QUIEBRE": "Quiebre", "CRITICO": "Crítico", "BAJO": "Bajo",
     "SALUDABLE": "Saludable", "SOBRESTOCK": "Sobrestock",
-    "SIN ROTACION": "Sin rotación", "SIN DATO": "Sin dato",
+    "SIN ROTACION": "Sin rotación", "SIN DATO": "-",
 }
 # Tinte de fila por estado (semáforo).
 EST_ROW = {
