@@ -23,6 +23,8 @@ inmovilizado, y cómo consolidar los pedidos en camión.
 - **Consolidación en camión**: agrupa los sugeridos por **proveedor/origen** (Chilemat/Santiago,
   Cemento/Concepción, Polines/Los Ángeles) y estima camiones **Volvo FH500 / FM460**
   (~28 t por viaje). Peso por **catálogo web** (Sodimac/Easy/Construmart) → nombre → estimado.
+- **Traslados entre sucursales**: sugiere mover el **excedente** de una sucursal (sobrestock /
+  sin rotación) a otra donde **falta** (bajo punto de reorden), antes de comprar.
 - **Exportar a Excel** la vista actual.
 
 ## Honestidad / supuestos (importante)
@@ -78,6 +80,6 @@ Python 3.12 · pandas · openpyxl · ttkbootstrap (Tkinter) · GitHub.
 
 ## Estado
 
-App funcional de punta a punta. Pendientes/mejoras: traslado entre sucursales,
-ampliar el catálogo de pesos, integrar compras reales para reducir el "sin proveedor",
-calibrar pesos por categoría, y lead time real por proveedor.
+App funcional de punta a punta. Pendientes/mejoras: ampliar el catálogo de pesos,
+integrar compras reales para reducir el "sin proveedor", calibrar pesos por categoría,
+y lead time real por proveedor.
