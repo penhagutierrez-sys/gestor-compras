@@ -1,6 +1,10 @@
 """
-Ejecuta el motor completo de una sola llamada.
-Lo usan tanto main.py (terminal) como app.py (la ventana).
+Ejecuta el motor completo.
+Lo usan main.py (terminal) y app.py (la ventana).
+
+Para la ventana, los datos crudos (ventas + stock) se cargan UNA vez con
+cargar_crudos() y luego se clasifica por sucursal con clasificar() sin releer
+el Excel — así cambiar de sucursal es rápido.
 """
 import config
 from . import cargar_datos as cd
@@ -8,31 +12,45 @@ from . import analisis as an
 from . import ordenes as oc
 
 
-def ejecutar(progreso=None):
+def cargar_crudos(progreso=None):
+    """Lee ventas y stock crudos (una sola vez). Devuelve (df_ventas, stock_raw)."""
+    if progreso:
+        progreso("Cargando ventas y stock...")
+    df = cd.cargar_ventas(config.RUTA_VENTAS, config.HOJA_VENTAS)
+    stock_raw = None
+    if config.RUTA_STOCK:
+        stock_raw = cd.cargar_stock_raw(config.RUTA_STOCK, config.HOJA_STOCK)
+    return df, stock_raw
+
+
+def clasificar(df, stock_raw, sucursal=None, progreso=None):
     """
-    Corre todo el flujo: ventas -> análisis -> stock -> órdenes de compra.
-    'progreso' es una función opcional para avisar en qué paso vamos
-    (se usa para mostrar mensajes en la ventana).
-    Devuelve el DataFrame de órdenes sugeridas.
+    Clasifica la salud de inventario. Si 'sucursal' (código, ej. 101) se entrega,
+    filtra ventas y stock a esa sucursal; si es None, usa todas (agregado).
     """
     def avisar(msg):
         if progreso:
             progreso(msg)
 
-    avisar("Cargando ventas...")
-    df = cd.cargar_ventas(config.RUTA_VENTAS, config.HOJA_VENTAS)
+    if sucursal:
+        df = df[df["COD_SUCURSAL"] == sucursal]
+        sr = stock_raw[stock_raw["SUCURSAL"] == str(sucursal)] if stock_raw is not None else None
+    else:
+        sr = stock_raw
 
     avisar("Analizando (ABC / XYZ / pronóstico)...")
     res = an.analizar(df)
 
     stock = None
-    if config.RUTA_STOCK:
-        avisar("Cargando stock...")
-        stock_nombre = cd.cargar_stock(config.RUTA_STOCK, config.HOJA_STOCK)
-        stock = cd.stock_por_codigo(stock_nombre, res)
-        n = int(stock["STOCK_ACTUAL"].notna().sum())
-        avisar(f"Stock cruzado: {n:,}/{len(stock):,} productos ({n/len(stock)*100:.0f}%)")
+    if sr is not None:
+        avisar("Cruzando stock...")
+        stock = cd.stock_por_codigo(cd.agregar_stock(sr), res)
 
     avisar("Clasificando salud de inventario...")
-    inventario = oc.clasificar_inventario(res, stock=stock)
-    return inventario
+    return oc.clasificar_inventario(res, stock=stock)
+
+
+def ejecutar(progreso=None, sucursal=None):
+    """Corre todo el flujo de una (carga + clasifica). Para uso simple/terminal."""
+    df, stock_raw = cargar_crudos(progreso)
+    return clasificar(df, stock_raw, sucursal=sucursal, progreso=progreso)

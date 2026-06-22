@@ -19,7 +19,7 @@ MESES = {
 
 # Solo cargamos las columnas que el motor necesita (más rápido y liviano).
 COLUMNAS = [
-    "FECHA_DOC", "Año", "MES", "CODIGO", "PRODUCTO",
+    "FECHA_DOC", "Año", "MES", "COD_SUCURSAL", "SUCURSAL", "CODIGO", "PRODUCTO",
     "RUBRO", "SUPERFAMILIA", "FAMILIA", "MARCA",
     "CANTIDAD_2025", "CANTIDAD_2026",
     "VENTA_2025", "VENTA_2026",
@@ -66,24 +66,34 @@ def _normalizar_nombre(s):
     return re.sub(r"\s+", " ", s)
 
 
-def cargar_stock(ruta, hoja="Export"):
+def cargar_stock_raw(ruta, hoja="Export"):
     """
-    Lee el export de stock de Power BI y devuelve el stock TOTAL por producto.
-    El export viene desglosado por bodega y con filas de subtotal ("Total"),
-    así que las quitamos y sumamos el stock de todas las bodegas por producto.
-    OJO: este export no trae CODIGO, así que devolvemos la llave por NOMBRE.
+    Lee el export de stock de Power BI (filas por bodega/sucursal) y lo deja limpio:
+    quita los subtotales ("Total") y agrega SUCURSAL + nombre normalizado.
+    Conserva la sucursal para poder filtrar por ella.
     """
     s = pd.read_excel(ruta, sheet_name=hoja)
     s = s[s["NOMBRE_PRODUCTO"].notna()]
     s = s[~s["NOMBRE_PRODUCTO"].astype(str).str.strip().str.lower().eq("total")]
     s["STOCK_FISICO"] = pd.to_numeric(s["STOCK_FISICO"], errors="coerce").fillna(0)
     s["NOMBRE_NORM"] = s["NOMBRE_PRODUCTO"].map(_normalizar_nombre)
+    s["SUCURSAL"] = s["SUCURSAL"].astype(str).str.strip()
+    return s[["SUCURSAL", "NOMBRE_NORM", "STOCK_FISICO"]]
+
+
+def agregar_stock(raw):
+    """Suma el stock por producto (nombre). OJO: el export no trae CODIGO."""
     return (
-        s.groupby("NOMBRE_NORM")["STOCK_FISICO"]
+        raw.groupby("NOMBRE_NORM")["STOCK_FISICO"]
         .sum()
         .rename("STOCK_ACTUAL")
         .reset_index()
     )
+
+
+def cargar_stock(ruta, hoja="Export"):
+    """Stock total por producto (todas las sucursales)."""
+    return agregar_stock(cargar_stock_raw(ruta, hoja))
 
 
 def stock_por_codigo(stock_nombre, productos):

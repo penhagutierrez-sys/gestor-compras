@@ -61,6 +61,7 @@ RAIL_ITEMS = [
 
 TODAS_FAMILIAS = "Todas las familias"
 TODAS_CATEGORIAS = "Todas las categorías"
+TODAS_SUCURSALES = "Todas las sucursales"
 
 # --- Marca / paleta: verde + naranja como ACENTO, fondo BLANCO, líneas gris pizarra (Danish) ---
 FONT = "Inter"
@@ -168,12 +169,16 @@ class GestorApp:
         self._sort_col = None
         self._sort_asc = True
         self._estados_activos = ["QUIEBRE", "CRITICO", "BAJO"]  # vista inicial
+        self._crudos = None           # (df_ventas, stock_raw) cacheado
+        self._sucursal = None         # código de sucursal (None = todas)
+        self._suc_map = {TODAS_SUCURSALES: None}
+        self._first = True
 
         self._estilos()
         self._barra_marca()
         self._barra_estado()          # abajo (pack), antes del shell
         self._shell()                 # rail + main
-        self._generar()
+        self._generar(reload=True)
 
     # ---- estilos ----
     def _estilos(self):
@@ -304,7 +309,8 @@ class GestorApp:
         der = tb.Frame(head)
         der.grid(row=0, column=1, sticky="e")
         self.btn_generar = tb.Button(der, text="↻  Actualizar",
-                                     bootstyle="secondary-outline", command=self._generar)
+                                     bootstyle="secondary-outline",
+                                     command=lambda: self._generar(reload=True))
         self.btn_generar.pack(side="left", padx=(0, 8))
         self.btn_export = tb.Button(der, text="↧  Exportar a Excel",
                                     bootstyle="primary", command=self._exportar, state="disabled")
@@ -328,25 +334,31 @@ class GestorApp:
     def _toolbar(self, main):
         bar = tb.Frame(main)
         bar.grid(row=1, column=0, columnspan=12, sticky="ew", pady=(0, 10))
-        bar.columnconfigure(4, weight=1)  # espaciador
-        tb.Label(bar, text="Categoría", bootstyle="secondary").grid(row=0, column=0, padx=(0, 6))
+        bar.columnconfigure(6, weight=1)  # espaciador
+        tb.Label(bar, text="Sucursal", bootstyle="secondary").grid(row=0, column=0, padx=(0, 6))
+        self.cmb_sucursal = tb.Combobox(bar, values=[TODAS_SUCURSALES], state="readonly",
+                                        width=20, bootstyle="primary")
+        self.cmb_sucursal.current(0)
+        self.cmb_sucursal.grid(row=0, column=1, padx=(0, 16))
+        self.cmb_sucursal.bind("<<ComboboxSelected>>", lambda e: self._cambio_sucursal())
+        tb.Label(bar, text="Categoría", bootstyle="secondary").grid(row=0, column=2, padx=(0, 6))
         self.cmb_categoria = tb.Combobox(bar, values=[TODAS_CATEGORIAS], state="readonly",
-                                         width=22, bootstyle="primary")
+                                         width=18, bootstyle="primary")
         self.cmb_categoria.current(0)
-        self.cmb_categoria.grid(row=0, column=1, padx=(0, 16))
+        self.cmb_categoria.grid(row=0, column=3, padx=(0, 16))
         self.cmb_categoria.bind("<<ComboboxSelected>>", lambda e: self._cambio_categoria())
-        tb.Label(bar, text="Familia", bootstyle="secondary").grid(row=0, column=2, padx=(0, 6))
+        tb.Label(bar, text="Familia", bootstyle="secondary").grid(row=0, column=4, padx=(0, 6))
         self.cmb_familia = tb.Combobox(bar, values=[TODAS_FAMILIAS], state="readonly",
-                                       width=24, bootstyle="primary")
+                                       width=20, bootstyle="primary")
         self.cmb_familia.current(0)
-        self.cmb_familia.grid(row=0, column=3, sticky="w")
+        self.cmb_familia.grid(row=0, column=5, sticky="w")
         self.cmb_familia.bind("<<ComboboxSelected>>", lambda e: self._aplicar_filtro())
 
-        self.busqueda = tb.Entry(bar, width=26)
-        self.busqueda.grid(row=0, column=5, sticky="e", padx=(0, 10))
+        self.busqueda = tb.Entry(bar, width=24)
+        self.busqueda.grid(row=0, column=7, sticky="e", padx=(0, 10))
         self.busqueda.bind("<KeyRelease>", lambda e: self._aplicar_filtro())
-        self.resumen = tb.Label(bar, text="", font=(FONT, 9), bootstyle="secondary")
-        self.resumen.grid(row=0, column=6, sticky="e")
+        self.resumen = tb.Label(bar, text="", font=(FONT, 8), bootstyle="secondary")
+        self.resumen.grid(row=0, column=8, sticky="e")
 
     def _tabla(self, main):
         card = tk.Frame(main, bg="white", highlightbackground=CARD_BORDER, highlightthickness=1)
@@ -371,18 +383,38 @@ class GestorApp:
     def _status(self, msg):
         self.estado.config(text=msg)
 
-    def _generar(self):
+    def _generar(self, reload=False):
+        if reload:                       # Actualizar: relee el Excel y vuelve a "Todas"
+            self._crudos = None
+            self._sucursal = None
         self.btn_generar.config(state="disabled")
         self.btn_export.config(state="disabled")
-        self._status("Procesando… (cargando ventas y stock, ~5 segundos)")
+        self._status("Procesando…")
         threading.Thread(target=self._worker, daemon=True).start()
 
     def _worker(self):
         try:
-            inv = pipeline.ejecutar(progreso=lambda m: self.root.after(0, self._status, m))
+            prog = lambda m: self.root.after(0, self._status, m)  # noqa: E731
+            if self._crudos is None:
+                self._crudos = pipeline.cargar_crudos(prog)
+                self.root.after(0, self._poblar_sucursales, self._crudos[0])
+            inv = pipeline.clasificar(*self._crudos, sucursal=self._sucursal, progreso=prog)
             self.root.after(0, self._listo, inv)
         except Exception as e:  # noqa: BLE001
             self.root.after(0, self._error, str(e))
+
+    def _poblar_sucursales(self, df):
+        pares = (df[["COD_SUCURSAL", "SUCURSAL"]].dropna().drop_duplicates()
+                 .sort_values("COD_SUCURSAL"))
+        self._suc_map = {TODAS_SUCURSALES: None}
+        for _, r in pares.iterrows():
+            self._suc_map[str(r["SUCURSAL"]).title()] = r["COD_SUCURSAL"]
+        self.cmb_sucursal["values"] = list(self._suc_map.keys())
+        self.cmb_sucursal.current(0)
+
+    def _cambio_sucursal(self):
+        self._sucursal = self._suc_map.get(self.cmb_sucursal.get())
+        self._generar(reload=False)      # reclasifica con caché (rápido, sin releer Excel)
 
     def _listo(self, inv):
         self.inv = inv
@@ -393,9 +425,12 @@ class GestorApp:
         self.cmb_categoria.current(0)
         self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(inv)
         self.cmb_familia.current(0)
-        # Abre mostrando el panorama global; al seleccionar un estado, todo se recalcula.
-        self._drill(None, "Todos")
-        self._status(f"Listo — {len(inv):,} productos clasificados.".replace(",", "."))
+        if self._first:
+            self._first = False
+            self._drill(None, "Todos")   # abre en panorama global
+        else:
+            self._aplicar_filtro()       # preserva el estado seleccionado
+        self._status(f"Listo — {len(inv):,} productos · {self.cmb_sucursal.get()}".replace(",", "."))
 
     def _actualizar_rail(self, scope):
         """Contadores del rail según categoría/familia/búsqueda (faceta, todos los estados)."""
