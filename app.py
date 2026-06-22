@@ -362,44 +362,40 @@ class GestorApp:
         self.inv = inv
         self.btn_generar.config(state="normal")
         self.btn_export.config(state="normal")
-        vc = inv["ESTADO"].value_counts()
-
-        # Rail: contadores.
-        for label, info in self._rail_items.items():
-            est = info["estados"]
-            total = len(inv) if est is None else int(sum(vc.get(e, 0) for e in est))
-            info["cnt"].config(text=fmt_num(total))
-
-        # Capital por estado.
-        cap_total = float(inv["VALOR_STOCK"].sum()) or 1.0
-        val_sobre = float(inv.loc[inv["ESTADO"] == "SOBRESTOCK", "VALOR_STOCK"].sum())
-        val_dead = float(inv.loc[inv["ESTADO"] == "SIN ROTACION", "VALOR_STOCK"].sum())
-        self.lbl_cap_sobre.config(text=f"Sobrestock   {fmt_millones(val_sobre)}")
-        self.lbl_cap_dead.config(text=f"Sin rotación   {fmt_millones(val_dead)}")
-
-        # KPIs (medidores).
-        rep = inv[inv["ESTADO"].isin(["QUIEBRE", "CRITICO", "BAJO"])]
-        pct_inmovil = round((val_sobre + val_dead) / cap_total * 100)
-        pct_sobre = round(val_sobre / cap_total * 100)
-        pct_dead = round(val_dead / cap_total * 100)
-        self._set_kpi("inmovil", pct_inmovil, fmt_millones(val_sobre + val_dead))
-        self._set_kpi("reponer", len(rep), fmt_millones(rep["MONTO_ESTIMADO"].sum()) + " compra",
-                      total=max(len(inv), 1))
-        self._set_kpi("sobre", pct_sobre, fmt_millones(val_sobre))
-        self._set_kpi("dead", pct_dead, fmt_millones(val_dead))
-
-        # Barra de salud.
-        self._update_barra(vc, len(inv))
-
-        # Filtros.
         cats = sorted({cap(x) for x in inv["RUBRO"].dropna().unique() if str(x).lower() != "nan"})
         self.cmb_categoria["values"] = [TODAS_CATEGORIAS] + cats
         self.cmb_categoria.current(0)
         self.cmb_familia["values"] = [TODAS_FAMILIAS] + self._familias_de(inv)
         self.cmb_familia.current(0)
-
-        self._drill(self._estados_activos, "Por reponer")
+        # Abre mostrando el panorama global; al seleccionar un estado, todo se recalcula.
+        self._drill(None, "Todos")
         self._status(f"Listo — {len(inv):,} productos clasificados.".replace(",", "."))
+
+    def _actualizar_rail(self, scope):
+        """Contadores del rail según categoría/familia/búsqueda (faceta, todos los estados)."""
+        vc = scope["ESTADO"].value_counts()
+        for label, info in self._rail_items.items():
+            est = info["estados"]
+            total = len(scope) if est is None else int(sum(vc.get(e, 0) for e in est))
+            info["cnt"].config(text=fmt_num(total))
+
+    def _actualizar_metricas(self, df):
+        """KPIs (medidores), barra de salud y capital — recalculados para la VISTA actual."""
+        vc = df["ESTADO"].value_counts()
+        cap_total = float(df["VALOR_STOCK"].sum()) or 1.0
+        val_sobre = float(df.loc[df["ESTADO"] == "SOBRESTOCK", "VALOR_STOCK"].sum())
+        val_dead = float(df.loc[df["ESTADO"] == "SIN ROTACION", "VALOR_STOCK"].sum())
+        self.lbl_cap_sobre.config(text=f"Sobrestock   {fmt_millones(val_sobre)}")
+        self.lbl_cap_dead.config(text=f"Sin rotación   {fmt_millones(val_dead)}")
+        rep = df[df["ESTADO"].isin(["QUIEBRE", "CRITICO", "BAJO"])]
+        self._set_kpi("inmovil", round((val_sobre + val_dead) / cap_total * 100),
+                      fmt_millones(val_sobre + val_dead))
+        self._set_kpi("reponer", len(rep),
+                      fmt_millones(rep["MONTO_ESTIMADO"].sum()) + " compra",
+                      total=max(len(df), 1))
+        self._set_kpi("sobre", round(val_sobre / cap_total * 100), fmt_millones(val_sobre))
+        self._set_kpi("dead", round(val_dead / cap_total * 100), fmt_millones(val_dead))
+        self._update_barra(vc, len(df))
 
     def _set_kpi(self, key, valor, detalle, total=100):
         k = self.kpi[key]
@@ -475,11 +471,16 @@ class GestorApp:
     def _aplicar_filtro(self):
         if self.inv is None:
             return
-        df = filtrar(self.inv, self._estados_activos, self.busqueda.get(),
-                     self.cmb_familia.get(), self.cmb_categoria.get())
+        # scope = categoría/familia/búsqueda (todos los estados) -> contadores del rail.
+        scope = filtrar(self.inv, None, self.busqueda.get(),
+                        self.cmb_familia.get(), self.cmb_categoria.get())
+        # vista = scope + estado seleccionado en el rail.
+        df = scope[scope["ESTADO"].isin(self._estados_activos)] if self._estados_activos else scope
         df = self._ordenar_df(df)
         self._encabezados()
         self._vista = df
+        self._actualizar_rail(scope)      # el rail se mueve con categoría/familia/búsqueda
+        self._actualizar_metricas(df)     # KPIs y barra se mueven con el estado seleccionado
 
         self.tree.delete(*self.tree.get_children())
         for i, (_, fila) in enumerate(df.iterrows()):
