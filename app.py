@@ -21,6 +21,7 @@ import config
 from motor import pipeline
 from motor import exportar as ex
 from motor import consolidar
+from motor import traslados
 
 # --- Estados ---------------------------------------------------------------
 EST_TXT = {
@@ -59,6 +60,7 @@ RAIL_ITEMS = [
     ("Sin dato", ["SIN DATO"], "#BDC3C7"),
     ("Todos", None, "#5C5C5C"),
     ("Consolidación", "__CONSOLIDAR__", "#2E5E3A"),   # vista especial (no es un estado)
+    ("Traslados", "__TRASLADOS__", "#8E44AD"),         # traslado entre sucursales
 ]
 
 # Columnas de la vista de consolidación (agrupada por proveedor).
@@ -71,6 +73,16 @@ CONSOL_COLS = [
     ("KG", "Kg estimados", 100, "e"),
     ("CAMIONES", "Camiones", 78, "center"),
     ("PCT_CONF", "Peso real", 70, "center"),
+]
+
+# Columnas de la vista de traslados entre sucursales.
+TRAS_COLS = [
+    ("PRODUCTO", "Producto", 250, "w"),
+    ("RUBRO", "Categoría", 140, "w"),
+    ("DESDE", "Desde (sobra)", 150, "w"),
+    ("HACIA", "Hacia (falta)", 150, "w"),
+    ("UNIDADES", "Unidades", 85, "e"),
+    ("VALOR", "Valor", 110, "e"),
 ]
 
 TODAS_FAMILIAS = "Todas las familias"
@@ -189,6 +201,8 @@ class GestorApp:
         self._suc_map = {TODAS_SUCURSALES: None}
         self._first = True
         self._vista_consol = False
+        self._vista_tras = False
+        self._traslados = None        # cache de traslados sugeridos (cross-sucursal)
 
         self._estilos()
         self._barra_marca()
@@ -396,6 +410,7 @@ class GestorApp:
         self.tree.configure(yscrollcommand=sb.set, xscrollcommand=sbx.set)
         self.tree.pack(side="left", fill="both", expand=True, padx=1, pady=1)
         self._construir_consol(main)   # tarjeta de consolidación (oculta hasta seleccionarla)
+        self._construir_traslados(main)  # tarjeta de traslados (oculta hasta seleccionarla)
 
     def _construir_consol(self, main):
         card = tk.Frame(main, bg="white", highlightbackground=CARD_BORDER, highlightthickness=1)
@@ -414,6 +429,61 @@ class GestorApp:
         sb.pack(side="right", fill="y")
         self.tree_consol.configure(yscrollcommand=sb.set)
         self.tree_consol.pack(side="left", fill="both", expand=True, padx=1, pady=1)
+
+    def _construir_traslados(self, main):
+        card = tk.Frame(main, bg="white", highlightbackground=CARD_BORDER, highlightthickness=1)
+        self._card_tras = card
+        self._tras_banner = tk.Label(card, text="", bg="#F3ECF7", fg="#5B2C6F",
+                                     font=(FONT, 8), anchor="w", padx=10, pady=5, justify="left")
+        self._tras_banner.pack(fill="x")
+        cont = tk.Frame(card, bg="white")
+        cont.pack(fill="both", expand=True)
+        cols = [c[0] for c in TRAS_COLS]
+        self.tree_tras = ttk.Treeview(cont, columns=cols, show="headings")
+        for key, titulo, ancho, anchor in TRAS_COLS:
+            self.tree_tras.heading(key, text=titulo)
+            self.tree_tras.column(key, width=ancho, anchor=anchor, stretch=(key == "PRODUCTO"))
+        sb = tb.Scrollbar(cont, orient="vertical", command=self.tree_tras.yview, bootstyle="round")
+        sb.pack(side="right", fill="y")
+        self.tree_tras.configure(yscrollcommand=sb.set)
+        self.tree_tras.pack(side="left", fill="both", expand=True, padx=1, pady=1)
+
+    def _mostrar_traslados(self):
+        """Vista de traslados entre sucursales (se calcula 1 vez en segundo plano y se cachea)."""
+        self._card_tras.grid(row=2, column=0, columnspan=12, sticky="nsew")
+        if self._traslados is not None:
+            self._llenar_traslados(self._traslados)
+            return
+        self._tras_banner.config(text="Calculando traslados entre sucursales… (~15 s)")
+        self.tree_tras.delete(*self.tree_tras.get_children())
+        self.resumen.config(text="Traslados entre sucursales")
+        threading.Thread(target=self._worker_traslados, daemon=True).start()
+
+    def _worker_traslados(self):
+        try:
+            df, stock_raw = self._crudos
+            sucs = [(cod, nom) for nom, cod in self._suc_map.items() if cod is not None]
+            t = traslados.sugerir_traslados(df, stock_raw, sucs)
+            self.root.after(0, self._traslados_listo, t)
+        except Exception as e:  # noqa: BLE001
+            self.root.after(0, lambda: self._tras_banner.config(text="Error: " + str(e)))
+
+    def _traslados_listo(self, t):
+        self._traslados = t
+        if self._vista_tras:
+            self._llenar_traslados(t)
+
+    def _llenar_traslados(self, t):
+        self.tree_tras.delete(*self.tree_tras.get_children())
+        for _, x in t.iterrows():
+            self.tree_tras.insert("", "end", values=(
+                str(x["PRODUCTO"])[:55], cap(x["RUBRO"]), x["DESDE"], x["HACIA"],
+                fmt_num(x["UNIDADES"]), fmt_clp(x["VALOR"])))
+        total = float(t["VALOR"].sum()) if len(t) else 0.0
+        self._tras_banner.config(text=(
+            f"{len(t):,} traslados sugeridos · {fmt_clp(total)} a mover entre sucursales "
+            f"ANTES de comprar (excedente → donde falta). Solo sucursales con stock."
+        ).replace(",", "."))
 
     def _mostrar_consolidacion(self):
         """Arma y muestra el resumen de compra consolidado por proveedor/origen."""
@@ -446,6 +516,7 @@ class GestorApp:
         if reload:                       # Actualizar: relee el Excel y vuelve a "Todas"
             self._crudos = None
             self._sucursal = None
+            self._traslados = None       # invalida el cache de traslados
         self.btn_generar.config(state="disabled")
         self.btn_export.config(state="disabled")
         self._status("Procesando…")
@@ -491,6 +562,8 @@ class GestorApp:
             self._drill(None, "Todos")   # abre en panorama global
         elif self._vista_consol:
             self._mostrar_consolidacion()  # estaba en consolidación: refresca esa vista
+        elif self._vista_tras:
+            self._mostrar_traslados()      # estaba en traslados: refresca esa vista
         else:
             self._aplicar_filtro()       # preserva el estado seleccionado
         self._status(f"Listo — {len(inv):,} productos · {self.cmb_sucursal.get()}".replace(",", "."))
@@ -570,12 +643,21 @@ class GestorApp:
                 if w is not info["acc"]:
                     w.config(bg=bg)
         if estados == "__CONSOLIDAR__":          # vista especial de camiones
-            self._vista_consol = True
+            self._vista_consol, self._vista_tras = True, False
+            self._card_tabla.grid_remove()
+            self._card_tras.grid_remove()
             self._mostrar_consolidacion()
             return
-        self._vista_consol = False
+        if estados == "__TRASLADOS__":           # vista de traslados entre sucursales
+            self._vista_tras, self._vista_consol = True, False
+            self._card_tabla.grid_remove()
+            self._card_consol.grid_remove()
+            self._mostrar_traslados()
+            return
+        self._vista_consol = self._vista_tras = False
         self._estados_activos = estados
         self._card_consol.grid_remove()
+        self._card_tras.grid_remove()
         self._card_tabla.grid()
         self._aplicar_filtro()
 
