@@ -101,6 +101,8 @@ class GestorApp:
         self.root = root
         self.ordenes = None
         self._vista = None
+        self._sort_col = None     # columna por la que se ordena (None = por venta)
+        self._sort_asc = True     # ascendente / descendente
 
         self._estilos()
         self._barra_marca()
@@ -199,7 +201,8 @@ class GestorApp:
         cols = [c[0] for c in self.COLS]
         self.tree = ttk.Treeview(card, columns=cols, show="headings")
         for key, titulo, ancho, anchor in self.COLS:
-            self.tree.heading(key, text=titulo)
+            # Clic en el encabezado = ordenar por esa columna.
+            self.tree.heading(key, text=titulo, command=lambda k=key: self._ordenar(k))
             self.tree.column(key, width=ancho, anchor=anchor, stretch=(key == "PRODUCTO"))
         for key, color in ROW.items():
             self.tree.tag_configure(TAG[key], background=color)
@@ -251,10 +254,41 @@ class GestorApp:
         self._status("Error: " + msg)
         Messagebox.show_error(msg, "Error al generar")
 
+    def _ordenar(self, col):
+        """Clic en encabezado: ordena por esa columna; segundo clic invierte."""
+        if self._sort_col == col:
+            self._sort_asc = not self._sort_asc
+        else:
+            self._sort_col = col
+            self._sort_asc = True
+        self._aplicar_filtro()
+
+    def _ordenar_df(self, df):
+        """Ordena por la columna elegida usando el VALOR real (no el texto)."""
+        col = self._sort_col
+        if not col:
+            return df  # sin orden manual: queda el de filtrar() (más vendidos)
+        if col == "URGENCIA":
+            # Orden por gravedad, no alfabético.
+            orden = {"QUIEBRE": 0, "POR AGOTARSE": 1, "SIN DATO": 2, "OK": 3}
+            clave = df["URGENCIA"].map(orden)
+            return (df.assign(_k=clave)
+                      .sort_values("_k", ascending=self._sort_asc, kind="stable")
+                      .drop(columns="_k"))
+        return df.sort_values(col, ascending=self._sort_asc, kind="stable")
+
+    def _encabezados(self):
+        """Pone la flecha ▲/▼ en la columna por la que se está ordenando."""
+        flecha = " ▲" if self._sort_asc else " ▼"
+        for key, titulo, _a, _b in self.COLS:
+            self.tree.heading(key, text=titulo + (flecha if key == self._sort_col else ""))
+
     def _aplicar_filtro(self):
         if self.ordenes is None:
             return
         df = filtrar(self.ordenes, self.cmb.get(), self.busqueda.get())
+        df = self._ordenar_df(df)
+        self._encabezados()
         self._vista = df
 
         self.tree.delete(*self.tree.get_children())
