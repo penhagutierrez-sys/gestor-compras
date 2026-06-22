@@ -62,13 +62,36 @@ RAIL_ITEMS = [
 TODAS_FAMILIAS = "Todas las familias"
 TODAS_CATEGORIAS = "Todas las categorías"
 
-NAVY = "#032D60"
-NAVY_SUB = "#9FB6D6"
-CARD_BORDER = "#DDDBDA"
-RAIL_BG = "#F4F6F9"
-RAIL_SEL = "#DCE7F3"
+# --- Marca / paleta (verde bosque + naranja terracota, fondo claro) + fuente Inter ---
+FONT = "Inter"
+FONT_SEMI = "Inter SemiBold"
+PALETA = {
+    "primary": "#2E5E3A", "secondary": "#6B7280", "success": "#3A7D4E",
+    "info": "#5E8C7B", "warning": "#C75B1E", "danger": "#B23B2E",
+    "light": "#F7F6F2", "dark": "#2B2B2B", "bg": "#F7F6F2", "fg": "#2B2B2B",
+    "selectbg": "#2E5E3A", "selectfg": "#FFFFFF", "border": "#D9D7D2",
+    "inputfg": "#2B2B2B", "inputbg": "#FFFFFF", "active": "#ECEBE6",
+}
+NAVY = "#2E5E3A"        # barra de marca (verde bosque)
+NAVY_SUB = "#C7D9CC"
+CARD_BORDER = "#D9D7D2"
+RAIL_BG = "#EFEEE9"     # rail claro y cálido
+RAIL_SEL = "#DCE7DD"    # selección verde suave
 GUTTER = 12
 PAD = 20
+
+
+def _aplicar_tema(root):
+    """Registra y activa el tema de marca (verde/naranja, fondo claro) + fuente Inter."""
+    import tkinter.font as tkfont
+    from ttkbootstrap.style import ThemeDefinition
+    root.style.register_theme(ThemeDefinition("solucenter", PALETA, "light"))
+    root.style.theme_use("solucenter")
+    for nm in ("TkDefaultFont", "TkTextFont", "TkHeadingFont", "TkMenuFont", "TkTooltipFont"):
+        try:
+            tkfont.nametofont(nm).configure(family=FONT)
+        except tk.TclError:
+            pass
 
 
 # --- Funciones puras --------------------------------------------------------
@@ -130,8 +153,8 @@ class GestorApp:
     # KPI: clave, etiqueta, estilo, es_porcentaje
     KPIS = [
         ("inmovil", "Inmovilizado", "danger", True),
-        ("reponer", "Por reponer", "warning", False),
-        ("sobre", "Sobrestock", "info", True),
+        ("reponer", "Por reponer", "success", False),
+        ("sobre", "Sobrestock", "warning", True),
         ("dead", "Sin rotación", "secondary", True),
     ]
 
@@ -152,9 +175,9 @@ class GestorApp:
     # ---- estilos ----
     def _estilos(self):
         st = self.root.style
-        st.configure("Treeview", rowheight=29, font=("Segoe UI", 10),
+        st.configure("Treeview", rowheight=29, font=(FONT, 10),
                      background="white", fieldbackground="white", borderwidth=0)
-        st.configure("Treeview.Heading", font=("Segoe UI Semibold", 10),
+        st.configure("Treeview.Heading", font=(FONT_SEMI, 10),
                      padding=(10, 9), background="#F3F3F3", foreground="#3E3E3C", relief="flat")
         st.map("Treeview.Heading", background=[("active", "#E9E9E9")])
         st.map("Treeview", background=[("selected", "#D8E6F6")],
@@ -165,13 +188,13 @@ class GestorApp:
         bar.pack(fill="x", side="top")
         bar.pack_propagate(False)
         tk.Label(bar, text="Gestor de Compras", bg=NAVY, fg="white",
-                 font=("Segoe UI Semibold", 15)).pack(side="left", padx=20)
+                 font=(FONT_SEMI, 15)).pack(side="left", padx=20)
         tk.Label(bar, text="Salud de inventario · Ferretería Solucenter", bg=NAVY,
-                 fg=NAVY_SUB, font=("Segoe UI", 9)).pack(side="left", pady=(6, 0))
+                 fg=NAVY_SUB, font=(FONT, 9)).pack(side="left", pady=(6, 0))
 
     def _barra_estado(self):
         self.estado = tb.Label(self.root, text="", anchor="w", padding=(PAD, 4),
-                               bootstyle="secondary", font=("Segoe UI", 8))
+                               bootstyle="secondary", font=(FONT, 8))
         self.estado.pack(fill="x", side="bottom")
 
     # ---- shell: rail (izq) + main (der) ----
@@ -188,7 +211,7 @@ class GestorApp:
         rail = tk.Frame(shell, bg=RAIL_BG)
         rail.grid(row=0, column=0, sticky="nsew")
         tk.Label(rail, text="ESTADO DE INVENTARIO", bg=RAIL_BG, fg="#7A869A",
-                 font=("Segoe UI Semibold", 8)).pack(anchor="w", padx=16, pady=(14, 6))
+                 font=(FONT_SEMI, 8)).pack(anchor="w", padx=16, pady=(14, 6))
 
         self._rail_items = {}
         for label, estados, color in RAIL_ITEMS:
@@ -198,13 +221,13 @@ class GestorApp:
             acc.pack(side="left", fill="y")
             inner = tk.Frame(it, bg=RAIL_BG)
             inner.pack(side="left", fill="x", expand=True, padx=(10, 12), pady=6)
-            dot = tk.Label(inner, text="●", bg=RAIL_BG, fg=color, font=("Segoe UI", 9))
+            dot = tk.Label(inner, text="●", bg=RAIL_BG, fg=color, font=(FONT, 9))
             dot.pack(side="left", padx=(0, 8))
             lbl = tk.Label(inner, text=label, bg=RAIL_BG, fg="#2C3E50",
-                           anchor="w", font=("Segoe UI", 10))
+                           anchor="w", font=(FONT, 10))
             lbl.pack(side="left")
             cnt = tk.Label(inner, text="0", bg=RAIL_BG, fg="#7A869A",
-                           font=("Segoe UI Semibold", 9))
+                           font=(FONT_SEMI, 9))
             cnt.pack(side="right")
             for w in (it, inner, dot, lbl, cnt):
                 w.bind("<Button-1>", lambda e, es=estados, lb=label: self._drill(es, lb))
@@ -218,12 +241,12 @@ class GestorApp:
         cap_box = tk.Frame(rail, bg=RAIL_BG)
         cap_box.pack(fill="x", side="bottom", padx=16, pady=14)
         tk.Label(cap_box, text="CAPITAL INMOVILIZADO", bg=RAIL_BG, fg="#7A869A",
-                 font=("Segoe UI Semibold", 8)).pack(anchor="w", pady=(0, 4))
+                 font=(FONT_SEMI, 8)).pack(anchor="w", pady=(0, 4))
         self.lbl_cap_sobre = tk.Label(cap_box, text="Sobrestock  —", bg=RAIL_BG,
-                                      fg="#34495E", font=("Segoe UI", 9), anchor="w")
+                                      fg="#34495E", font=(FONT, 9), anchor="w")
         self.lbl_cap_sobre.pack(anchor="w")
         self.lbl_cap_dead = tk.Label(cap_box, text="Sin rotación  —", bg=RAIL_BG,
-                                     fg="#34495E", font=("Segoe UI", 9), anchor="w")
+                                     fg="#34495E", font=(FONT, 9), anchor="w")
         self.lbl_cap_dead.pack(anchor="w")
 
     def _main(self, shell):
@@ -241,9 +264,9 @@ class GestorApp:
         izq = tb.Frame(head)
         izq.grid(row=0, column=0, sticky="w")
         tb.Label(izq, text="Salud de inventario",
-                 font=("Segoe UI Semibold", 16)).pack(anchor="w")
+                 font=(FONT_SEMI, 16)).pack(anchor="w")
         tb.Label(izq, text=f"Punto de reorden y cobertura · lead time {config.LEAD_TIME_GLOBAL_DIAS} días (supuesto, configurable)",
-                 font=("Segoe UI", 9), bootstyle="secondary").pack(anchor="w")
+                 font=(FONT, 9), bootstyle="secondary").pack(anchor="w")
         der = tb.Frame(head)
         der.grid(row=0, column=1, sticky="e")
         self.btn_generar = tb.Button(der, text="↻  Actualizar",
@@ -262,9 +285,9 @@ class GestorApp:
             meter = tb.Meter(cell, metersize=128, amountused=0, amounttotal=100,
                              subtext=label, bootstyle=style,
                              textright="%" if espct else "", stripethickness=8,
-                             subtextfont=("Segoe UI", 9))
+                             subtextfont=(FONT, 9))
             meter.pack()
-            det = tk.Label(cell, text="—", fg="#5C5C5C", font=("Segoe UI Semibold", 10))
+            det = tk.Label(cell, text="—", fg="#5C5C5C", font=(FONT_SEMI, 10))
             det.pack()
             self.kpi[key] = {"meter": meter, "det": det, "pct": espct}
 
@@ -295,9 +318,9 @@ class GestorApp:
             chip = tk.Frame(leg, bg="white")
             chip.pack(side="left", padx=(0, 14))
             tk.Label(chip, text="■", fg=STATE_COLOR[est], bg="white",
-                     font=("Segoe UI", 9)).pack(side="left")
+                     font=(FONT, 9)).pack(side="left")
             tk.Label(chip, text=EST_TXT[est] if est != "SIN DATO" else "Sin dato",
-                     fg="#5C5C5C", bg="white", font=("Segoe UI", 8)).pack(side="left")
+                     fg="#5C5C5C", bg="white", font=(FONT, 8)).pack(side="left")
 
     def _toolbar(self, main):
         bar = tb.Frame(main)
@@ -319,7 +342,7 @@ class GestorApp:
         self.busqueda = tb.Entry(bar, width=26)
         self.busqueda.grid(row=0, column=5, sticky="e", padx=(0, 10))
         self.busqueda.bind("<KeyRelease>", lambda e: self._aplicar_filtro())
-        self.resumen = tb.Label(bar, text="", font=("Segoe UI", 9), bootstyle="secondary")
+        self.resumen = tb.Label(bar, text="", font=(FONT, 9), bootstyle="secondary")
         self.resumen.grid(row=0, column=6, sticky="e")
 
     def _tabla(self, main):
@@ -515,7 +538,8 @@ class GestorApp:
 
 
 def main():
-    root = tb.Window(themename="cosmo", title="Gestor de Compras 2.0")
+    root = tb.Window(themename="litera", title="Gestor de Compras 2.0")
+    _aplicar_tema(root)
     GestorApp(root)
     root.update_idletasks()
     w, h = 1320, 800
