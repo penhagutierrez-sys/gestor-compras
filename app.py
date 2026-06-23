@@ -286,29 +286,7 @@ class GestorApp:
         tk.Frame(rail, bg=LINE, height=1).pack(fill="x", padx=12)
         dash = tk.Frame(rail, bg=RAIL_BG)
         dash.pack(fill="x", padx=14, pady=(10, 12))
-        tk.Label(dash, text="INDICADORES", bg=RAIL_BG, fg=SLATE,
-                 font=(FONT_SEMI, 8)).pack(anchor="w", pady=(0, 4))
-
-        grid = tk.Frame(dash, bg=RAIL_BG)
-        grid.pack(fill="x")
-        grid.columnconfigure(0, weight=1, uniform="k")
-        grid.columnconfigure(1, weight=1, uniform="k")
-        self.kpi = {}
-        for i, (key, label, style, espct) in enumerate(self.KPIS):
-            cell = tk.Frame(grid, bg=RAIL_BG)
-            cell.grid(row=i // 2, column=i % 2, sticky="nsew", pady=(0, 10))
-            # Aro sólido y fino; el número va solo (sin etiqueta encima).
-            meter = tb.Meter(cell, metersize=84, amountused=0, amounttotal=100,
-                             bootstyle=style, textright="%" if espct else "",
-                             meterthickness=7, stripethickness=0,
-                             textfont=(FONT_SEMI, 15))
-            meter.pack()
-            tk.Label(cell, text=label, bg=RAIL_BG, fg=INK,
-                     font=(FONT_SEMI, 8)).pack(pady=(4, 0))
-            det = tk.Label(cell, text="—", bg=RAIL_BG, fg=SLATE, font=(FONT, 8))
-            det.pack()
-            self.kpi[key] = {"meter": meter, "det": det, "pct": espct}
-
+        self.kpi = {}   # (se quitaron los medidores: solo eran útiles en "Todos")
         self._barra_salud(dash)
 
         tk.Frame(dash, bg=LINE, height=1).pack(fill="x", pady=(8, 6))
@@ -587,14 +565,6 @@ class GestorApp:
         val_dead = float(df.loc[df["ESTADO"] == "SIN ROTACION", "VALOR_STOCK"].sum())
         self.lbl_cap_sobre.config(text=f"Sobrestock   {fmt_millones(val_sobre)}")
         self.lbl_cap_dead.config(text=f"Sin rotación   {fmt_millones(val_dead)}")
-        rep = df[df["ESTADO"].isin(["QUIEBRE", "CRITICO", "BAJO"])]
-        self._set_kpi("inmovil", round((val_sobre + val_dead) / cap_total * 100),
-                      fmt_millones(val_sobre + val_dead))
-        self._set_kpi("reponer", len(rep),
-                      fmt_millones(rep["MONTO_ESTIMADO"].sum()),
-                      total=max(len(df), 1))
-        self._set_kpi("sobre", round(val_sobre / cap_total * 100), fmt_millones(val_sobre))
-        self._set_kpi("dead", round(val_dead / cap_total * 100), fmt_millones(val_dead))
         self._update_barra(vc, len(df))
 
     def _set_kpi(self, key, valor, detalle, total=100):
