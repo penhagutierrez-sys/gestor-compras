@@ -92,6 +92,16 @@ RUTA_CATALOGO_PESOS = Path(__file__).parent / "data" / "catalogo_pesos.csv"
 # --- MAESTRO 80/20 (Pareto): manda en ABC y en el nivel de demanda (run-rate 12 meses) ---
 RUTA_MAESTRO_8020 = Path(__file__).parent / "data" / "80-20.xlsx"
 HOJA_MAESTRO_8020 = "BD"
+# Como el 80/20 no viene separado por sucursal, la demanda se reparte con esta
+# PROPORCIÓN fija por sucursal (código -> fracción; suma = 1.0).
+SUCURSAL_PROPORCION = {
+    101: 0.22,   # Casa Matriz Arauco
+    201: 0.22,   # Sucursal Cañete
+    301: 0.20,   # Sucursal Curanilahue
+    401: 0.11,   # Bodega O'Higgins
+    501: 0.11,   # Bodega Huillinco
+    601: 0.14,   # Sucursal Santa Juana
+}
 
 # Carpeta donde se guardan las órdenes generadas.
 CARPETA_SALIDAS = Path(__file__).parent / "salidas"

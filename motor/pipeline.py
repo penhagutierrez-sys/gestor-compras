@@ -15,19 +15,17 @@ from . import analisis as an
 from . import ordenes as oc
 
 
-def _aplicar_maestro(res, maestro, tot_all):
+def _aplicar_maestro(res, maestro, prop):
     """
     Aplica el maestro 80/20: ABC oficial (Pareto) y NIVEL de demanda = run-rate anual
-    (CANT_ANUAL/12) repartido por la participación de la sucursal en ese producto
-    (proporción real desde la base transaccional). Conserva la forma/σ escalándola.
+    (CANT_ANUAL/12) repartido por la PROPORCIÓN fija de la sucursal ('prop'; 1.0 = todas).
+    Conserva la forma/σ escalándola por el mismo factor.
     """
     r = res.merge(maestro, on="CODIGO", how="left")
     r["ABC"] = r["ABC_8020"].where(r["ABC_8020"].notna(), r["ABC"])
-    total = r["CODIGO"].map(tot_all).fillna(0.0)
-    share = (r["CANTIDAD_TOTAL"] / total.replace(0, np.nan)).fillna(1.0)
     cant = pd.to_numeric(r["CANT_ANUAL"], errors="coerce").fillna(0.0)
-    nuevo = (cant / 12.0) * share
-    usar = (cant > 0) & (total > 0)
+    nuevo = (cant / 12.0) * prop
+    usar = cant > 0
     factor = (nuevo / r["PRONOSTICO_MENSUAL"].where(r["PRONOSTICO_MENSUAL"] > 0)).fillna(1.0)
     r.loc[usar, "SIGMA_MENSUAL"] = r.loc[usar, "SIGMA_MENSUAL"].fillna(0.0) * factor[usar]
     r.loc[usar, "PRONOSTICO_MENSUAL"] = nuevo[usar]
@@ -67,9 +65,8 @@ def clasificar(df, stock_raw, sucursal=None, maestro=None, progreso=None):
         if progreso:
             progreso(msg)
 
-    # Total de unidades por producto en TODA la base (para repartir la demanda por sucursal).
-    full = df[~df["CODIGO"].astype(str).str.upper().str.startswith("ZZ")]
-    tot_all = full.groupby("CODIGO")["CANTIDAD"].sum()
+    # Proporción de demanda de la sucursal (el 80/20 no viene separado por sucursal).
+    prop = float(config.SUCURSAL_PROPORCION.get(int(sucursal), 0.0)) if sucursal else 1.0
 
     if sucursal:
         df = df[df["COD_SUCURSAL"] == sucursal]
@@ -80,7 +77,7 @@ def clasificar(df, stock_raw, sucursal=None, maestro=None, progreso=None):
     avisar("Analizando (ABC / XYZ / pronóstico)...")
     res = an.analizar(df)
     if maestro is not None:
-        res = _aplicar_maestro(res, maestro, tot_all)
+        res = _aplicar_maestro(res, maestro, prop)
 
     stock = None
     if sr is not None:
