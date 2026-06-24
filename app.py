@@ -222,15 +222,29 @@ class GestorApp:
                foreground=[("selected", INK)])
 
     def _barra_marca(self):
-        bar = tk.Frame(self.root, bg="#FFFFFF", height=58)
+        bar = tk.Frame(self.root, bg="#FFFFFF", height=62)
         bar.pack(fill="x", side="top")
         bar.pack_propagate(False)
-        tk.Frame(bar, bg=GREEN, width=4, height=26).pack(side="left", padx=(PAD, 12), pady=16)
-        tk.Label(bar, text="Gestor de Compras", bg="#FFFFFF", fg=INK,
-                 font=(FONT_SEMI, 15)).pack(side="left", pady=(15, 0))
-        tk.Label(bar, text="Salud de inventario · Ferretería Solucenter", bg="#FFFFFF",
-                 fg=SLATE, font=(FONT, 9)).pack(side="left", padx=(12, 0), pady=(21, 0))
-        tk.Frame(self.root, bg=LINE, height=1).pack(fill="x", side="top")  # hairline
+
+        # Logotipo Solucenter (lockup de texto: "FERRETERÍA" tracked sobre "solucenter").
+        marca = tk.Frame(bar, bg="#FFFFFF")
+        marca.pack(side="left", padx=(PAD, 16), pady=11)
+        tk.Label(marca, text="F E R R E T E R Í A", bg="#FFFFFF", fg=SLATE,
+                 font=(FONT, 7)).pack(anchor="w")
+        tk.Label(marca, text="solucenter", bg="#FFFFFF", fg=GREEN,
+                 font=(FONT_SEMI, 18)).pack(anchor="w")
+
+        tk.Frame(bar, bg=LINE, width=1, height=34).pack(side="left", pady=14)  # hairline vertical
+
+        # Nombre de la herramienta.
+        titulo = tk.Frame(bar, bg="#FFFFFF")
+        titulo.pack(side="left", padx=(16, 0), pady=13)
+        tk.Label(titulo, text="Gestor de Compras", bg="#FFFFFF", fg=INK,
+                 font=(FONT_SEMI, 13)).pack(anchor="w")
+        tk.Label(titulo, text="Salud de inventario", bg="#FFFFFF", fg=SLATE,
+                 font=(FONT, 8)).pack(anchor="w")
+
+        tk.Frame(self.root, bg=LINE, height=1).pack(fill="x", side="top")  # hairline inferior
 
     def _barra_estado(self):
         self.estado = tb.Label(self.root, text="", anchor="w", padding=(PAD, 4),
