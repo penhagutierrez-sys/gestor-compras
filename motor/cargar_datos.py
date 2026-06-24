@@ -6,9 +6,23 @@ SEPARADOS en dos columnas, una por año (..._2025 y ..._2026). Nunca vienen las
 dos a la vez (si la venta fue en 2025, la de 2026 está en 0 y viceversa).
 Aquí las UNIMOS en una sola columna "limpia" para poder trabajar cómodos.
 """
+import os
 import re
+import shutil
+import tempfile
 
+import numpy as np
 import pandas as pd
+
+
+def _leer_excel_robusto(ruta, hoja, header=0):
+    """Lee un Excel; si está bloqueado (abierto en Excel/OneDrive), lo copia a temp y lee la copia."""
+    try:
+        return pd.read_excel(ruta, sheet_name=hoja, header=header)
+    except PermissionError:
+        tmp = os.path.join(tempfile.gettempdir(), "gc_" + os.path.basename(str(ruta)))
+        shutil.copy2(ruta, tmp)
+        return pd.read_excel(tmp, sheet_name=hoja, header=header)
 
 # Traducción del nombre del mes (como viene en el Excel) a número de mes.
 MESES = {
@@ -94,6 +108,24 @@ def agregar_stock(raw):
 def cargar_stock(ruta, hoja="Export"):
     """Stock total por producto (todas las sucursales)."""
     return agregar_stock(cargar_stock_raw(ruta, hoja))
+
+
+def cargar_maestro_8020(ruta, hoja="BD"):
+    """
+    Maestro Pareto 80/20 (hoja 'BD', encabezado en la fila 2): SKU, CANTIDAD_VENDIDA
+    (run-rate anual), PCT_ACUMULADO. Devuelve [CODIGO, CANT_ANUAL, ABC_8020].
+    El ABC sale del corte Pareto oficial (A<=80% acumulado, B<=95%, C el resto).
+    """
+    import config
+    df = _leer_excel_robusto(ruta, hoja, header=1)
+    df = df.rename(columns={"SKU": "CODIGO", "CANTIDAD_VENDIDA": "CANT_ANUAL"})
+    df["CODIGO"] = df["CODIGO"].astype(str).str.strip()
+    df = df[df["CODIGO"].ne("") & df["CODIGO"].str.lower().ne("nan")]
+    df["CANT_ANUAL"] = pd.to_numeric(df["CANT_ANUAL"], errors="coerce").fillna(0)
+    pct = pd.to_numeric(df["PCT_ACUMULADO"], errors="coerce").fillna(1.0)
+    df["ABC_8020"] = np.where(pct <= config.CORTE_A, "A",
+                              np.where(pct <= config.CORTE_B, "B", "C"))
+    return df.drop_duplicates("CODIGO")[["CODIGO", "CANT_ANUAL", "ABC_8020"]]
 
 
 def cargar_proveedores(ruta, hoja="Datos Maepro"):

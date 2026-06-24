@@ -199,6 +199,7 @@ class GestorApp:
         self._estados_activos = ["QUIEBRE", "CRITICO", "BAJO"]  # vista inicial
         self._crudos = None           # (df_ventas, stock_raw) cacheado
         self._prov = None             # maestro de proveedores cacheado
+        self._maestro = None          # maestro 80/20 (ABC + nivel de demanda)
         self._sucursal = None         # código de sucursal (None = todas)
         self._suc_map = {TODAS_SUCURSALES: None}
         self._first = True
@@ -457,7 +458,7 @@ class GestorApp:
         try:
             df, stock_raw = self._crudos
             sucs = [(cod, nom) for nom, cod in self._suc_map.items() if cod is not None]
-            t = traslados.sugerir_traslados(df, stock_raw, sucs)
+            t = traslados.sugerir_traslados(df, stock_raw, sucs, maestro=self._maestro)
             self.root.after(0, self._traslados_listo, t)
         except Exception as e:  # noqa: BLE001
             self.root.after(0, lambda: self._tras_banner.config(text="Error: " + str(e)))
@@ -520,11 +521,13 @@ class GestorApp:
         try:
             prog = lambda m: self.root.after(0, self._status, m)  # noqa: E731
             if self._crudos is None:
-                df, stock_raw, prov = pipeline.cargar_crudos(prog)
+                df, stock_raw, prov, maestro = pipeline.cargar_crudos(prog)
                 self._crudos = (df, stock_raw)
                 self._prov = prov
+                self._maestro = maestro
                 self.root.after(0, self._poblar_sucursales, df)
-            inv = pipeline.clasificar(*self._crudos, sucursal=self._sucursal, progreso=prog)
+            inv = pipeline.clasificar(*self._crudos, sucursal=self._sucursal,
+                                      maestro=self._maestro, progreso=prog)
             self.root.after(0, self._listo, inv)
         except Exception as e:  # noqa: BLE001
             self.root.after(0, self._error, str(e))

@@ -13,7 +13,7 @@ import pandas as pd
 from . import pipeline
 
 
-def sugerir_traslados(df, stock_raw, sucursales):
+def sugerir_traslados(df, stock_raw, sucursales, maestro=None):
     """
     df, stock_raw: datos crudos cacheados. sucursales: lista de (cod, nombre).
     Devuelve DataFrame [CODIGO, PRODUCTO, RUBRO, DESDE, HACIA, UNIDADES, VALOR].
@@ -26,7 +26,7 @@ def sugerir_traslados(df, stock_raw, sucursales):
     for cod, nom in sucursales:
         if str(cod).strip() not in con_stock:
             continue
-        inv = pipeline.clasificar(df, stock_raw, sucursal=cod)
+        inv = pipeline.clasificar(df, stock_raw, sucursal=cod, maestro=maestro)
         inv = inv[inv["STOCK_CONOCIDO"]]
         if len(inv):
             tablas[cod] = inv.set_index("CODIGO")

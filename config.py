@@ -89,5 +89,9 @@ PESO_MAX_PLAUSIBLE_KG = 2000  # descarta parseos absurdos del nombre
 # confianza: si un CODIGO está aquí, su peso manda sobre el parseo y los defaults.
 RUTA_CATALOGO_PESOS = Path(__file__).parent / "data" / "catalogo_pesos.csv"
 
+# --- MAESTRO 80/20 (Pareto): manda en ABC y en el nivel de demanda (run-rate 12 meses) ---
+RUTA_MAESTRO_8020 = Path(__file__).parent / "data" / "80-20.xlsx"
+HOJA_MAESTRO_8020 = "BD"
+
 # Carpeta donde se guardan las órdenes generadas.
 CARPETA_SALIDAS = Path(__file__).parent / "salidas"
