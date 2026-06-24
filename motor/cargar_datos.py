@@ -125,7 +125,11 @@ def cargar_maestro_8020(ruta, hoja="BD"):
     pct = pd.to_numeric(df["PCT_ACUMULADO"], errors="coerce").fillna(1.0)
     df["ABC_8020"] = np.where(pct <= config.CORTE_A, "A",
                               np.where(pct <= config.CORTE_B, "B", "C"))
-    return df.drop_duplicates("CODIGO")[["CODIGO", "CANT_ANUAL", "ABC_8020"]]
+    df = df.drop_duplicates("CODIGO").sort_values("CANT_ANUAL", ascending=False)
+    top = getattr(config, "MAX_SKU", None)
+    if top:                                  # solo los top-N SKU (los relevantes del 80/20)
+        df = df.head(int(top))
+    return df[["CODIGO", "CANT_ANUAL", "ABC_8020"]]
 
 
 def cargar_proveedores(ruta, hoja="Datos Maepro"):

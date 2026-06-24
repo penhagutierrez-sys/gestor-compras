@@ -26,7 +26,7 @@ def sugerir_traslados(df, stock_raw, sucursales, maestro=None):
     for cod, nom in sucursales:
         if str(cod).strip() not in con_stock:
             continue
-        inv = pipeline.clasificar(df, stock_raw, sucursal=cod, maestro=maestro)
+        inv = pipeline.clasificar(df, stock_raw, sucursal=cod, maestro=maestro, sim_stock=False)
         inv = inv[inv["STOCK_CONOCIDO"]]
         if len(inv):
             tablas[cod] = inv.set_index("CODIGO")

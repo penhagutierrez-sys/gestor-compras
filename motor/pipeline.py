@@ -21,14 +21,16 @@ def _aplicar_maestro(res, maestro, prop):
     (CANT_ANUAL/12) repartido por la PROPORCIÓN fija de la sucursal ('prop'; 1.0 = todas).
     Conserva la forma/σ escalándola por el mismo factor.
     """
-    r = res.merge(maestro, on="CODIGO", how="left")
+    # INNER: reduce el universo a los SKU del maestro (top-N del 80/20).
+    r = res.merge(maestro, on="CODIGO", how="inner")
     r["ABC"] = r["ABC_8020"].where(r["ABC_8020"].notna(), r["ABC"])
-    cant = pd.to_numeric(r["CANT_ANUAL"], errors="coerce").fillna(0.0)
-    nuevo = (cant / 12.0) * prop
-    usar = cant > 0
+    cant = pd.to_numeric(r["CANT_ANUAL"], errors="coerce")
+    # nivel mensual base: run-rate 80/20 si existe; si no, el pronóstico ya calculado.
+    base = (cant / 12.0).where(cant.notna() & (cant > 0), r["PRONOSTICO_MENSUAL"])
+    nuevo = base * prop                      # repartido por la proporción de la sucursal
     factor = (nuevo / r["PRONOSTICO_MENSUAL"].where(r["PRONOSTICO_MENSUAL"] > 0)).fillna(1.0)
-    r.loc[usar, "SIGMA_MENSUAL"] = r.loc[usar, "SIGMA_MENSUAL"].fillna(0.0) * factor[usar]
-    r.loc[usar, "PRONOSTICO_MENSUAL"] = nuevo[usar]
+    r["SIGMA_MENSUAL"] = r["SIGMA_MENSUAL"].fillna(0.0) * factor
+    r["PRONOSTICO_MENSUAL"] = nuevo
     return r.drop(columns=["ABC_8020", "CANT_ANUAL"], errors="ignore")
 
 
@@ -55,34 +57,39 @@ def cargar_crudos(progreso=None):
     return df, stock_raw, prov, maestro
 
 
-def clasificar(df, stock_raw, sucursal=None, maestro=None, progreso=None):
+def clasificar(df, stock_raw, sucursal=None, maestro=None, sim_stock=True, progreso=None):
     """
-    Clasifica la salud de inventario. Si 'sucursal' (código, ej. 101) se entrega,
-    filtra ventas y stock a esa sucursal; si es None, usa todas (agregado).
-    'maestro' (80/20) define el ABC oficial y el nivel de demanda.
+    Clasifica la salud de inventario. La sucursal aplica la PROPORCIÓN fija a ventas e
+    inventario (simulación). sim_stock=False usa el stock REAL por sucursal (lo usan los
+    Traslados, donde importan los desbalances reales). 'maestro' (80/20) define el ABC y
+    el nivel de demanda, y reduce el universo a sus SKU.
     """
     def avisar(msg):
         if progreso:
             progreso(msg)
 
-    # Proporción de demanda de la sucursal (el 80/20 no viene separado por sucursal).
+    # La sucursal aplica la PROPORCIÓN fija a ventas e inventario (el 80/20 no viene por sucursal).
     prop = float(config.SUCURSAL_PROPORCION.get(int(sucursal), 0.0)) if sucursal else 1.0
 
-    if sucursal:
-        df = df[df["COD_SUCURSAL"] == sucursal]
-        sr = stock_raw[stock_raw["SUCURSAL"] == str(sucursal)] if stock_raw is not None else None
-    else:
-        sr = stock_raw
-
     avisar("Analizando (ABC / XYZ / pronóstico)...")
-    res = an.analizar(df)
+    res = an.analizar(df)                      # toda la base; la sucursal entra por proporción
     if maestro is not None:
         res = _aplicar_maestro(res, maestro, prop)
+    elif prop != 1.0:
+        res = res.assign(PRONOSTICO_MENSUAL=res["PRONOSTICO_MENSUAL"] * prop,
+                         SIGMA_MENSUAL=res["SIGMA_MENSUAL"] * prop)
 
     stock = None
-    if sr is not None:
+    if stock_raw is not None:
         avisar("Cruzando stock...")
-        stock = cd.stock_por_codigo(cd.agregar_stock(sr), res)
+        if sim_stock:                          # inventario SIMULADO = total * proporción
+            sn = cd.agregar_stock(stock_raw)
+            if prop != 1.0:
+                sn = sn.assign(STOCK_ACTUAL=sn["STOCK_ACTUAL"] * prop)
+        else:                                  # stock REAL por sucursal (para traslados)
+            sr = stock_raw[stock_raw["SUCURSAL"] == str(sucursal)] if sucursal else stock_raw
+            sn = cd.agregar_stock(sr)
+        stock = cd.stock_por_codigo(sn, res)
 
     avisar("Clasificando salud de inventario...")
     return oc.clasificar_inventario(res, stock=stock)
