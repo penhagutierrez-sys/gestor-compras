@@ -24,6 +24,8 @@ def cargar_catalogo_pesos():
     try:
         c = pd.read_csv(ruta, dtype={"CODIGO": str})
         c = c[pd.to_numeric(c["PESO_KG"], errors="coerce").fillna(0) > 0]
+        if "MATCH" in c.columns:   # solo pesos con CALCE EXACTO (no aproximados)
+            c = c[c["MATCH"].astype(str).str.strip().str.lower() == "exacta"]
         return dict(zip(c["CODIGO"].astype(str).str.strip(),
                         pd.to_numeric(c["PESO_KG"], errors="coerce")))
     except Exception:  # noqa: BLE001

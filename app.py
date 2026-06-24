@@ -174,11 +174,13 @@ class GestorApp:
         ("FAMILIA", "Familia", 140, "w"),
         ("ABC", "ABC", 46, "center"),
         ("ESTADO", "Estado", 96, "center"),
-        ("STOCK_ACTUAL", "Stock", 66, "e"),
-        ("COBERTURA_DIAS", "Cobertura (d)", 92, "e"),
-        ("PUNTO_REORDEN", "Pto. reorden", 96, "e"),
-        ("SUGERIDO_PEDIR", "Sugerido", 84, "e"),
-        ("MONTO_ESTIMADO", "Monto compra", 112, "e"),
+        ("STOCK_ACTUAL", "Stock", 60, "e"),
+        ("COBERTURA_DIAS", "Cobert. (d)", 78, "e"),
+        ("PUNTO_REORDEN", "Mín", 60, "e"),
+        ("NIVEL_MAX_S", "Máx", 60, "e"),
+        ("LEAD_TIME_DIAS", "Lead (d)", 62, "e"),
+        ("SUGERIDO_PEDIR", "Sugerido", 76, "e"),
+        ("MONTO_ESTIMADO", "Monto compra", 108, "e"),
     ]
     # KPI: clave, etiqueta, estilo, es_porcentaje
     KPIS = [
@@ -326,7 +328,7 @@ class GestorApp:
         izq = tb.Frame(head)
         izq.grid(row=0, column=0, sticky="w")
         tb.Label(izq, text="Salud de inventario", font=(FONT_SEMI, 14)).pack(anchor="w")
-        tb.Label(izq, text=f"Punto de reorden y cobertura · lead time {config.LEAD_TIME_GLOBAL_DIAS} días (supuesto, configurable)",
+        tb.Label(izq, text="Mín/Máx sugeridos y punto de reorden · lead time simulado por categoría (ajustable)",
                  font=(FONT, 8), bootstyle="secondary").pack(anchor="w")
         der = tb.Frame(head)
         der.grid(row=0, column=1, sticky="e")
@@ -693,6 +695,8 @@ class GestorApp:
                 cap(fila["RUBRO"]), cap(fila["FAMILIA"]), fila["ABC"],
                 EST_TXT.get(est, est), stock_txt, cob_txt,
                 fmt_num(fila["PUNTO_REORDEN"]),
+                fmt_num(fila["NIVEL_MAX_S"]),
+                fmt_num(fila["LEAD_TIME_DIAS"]),
                 fmt_num(fila["SUGERIDO_PEDIR"]), fmt_clp(fila["MONTO_ESTIMADO"]),
             )
             tag = EST_TAG.get(est, "impar" if i % 2 else "par")

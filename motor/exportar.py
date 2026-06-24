@@ -20,7 +20,8 @@ COLUMNAS = {
     "ESTADO": "Estado",
     "STOCK_ACTUAL": "Stock actual",
     "COBERTURA_DIAS": "Cobertura (días)",
-    "PUNTO_REORDEN": "Punto reorden",
+    "PUNTO_REORDEN": "Mínimo (reorden)",
+    "NIVEL_MAX_S": "Máximo sugerido",
     "STOCK_SEGURIDAD": "Stock seguridad",
     "LEAD_TIME_DIAS": "Lead time (d)",
     "PRONOSTICO_MENSUAL": "Pronóstico/mes",
@@ -76,7 +77,7 @@ def _dar_formato(ruta, tabla):
             titulo = tabla.columns[celda.column - 1]
             if titulo in ("Monto estimado", "Costo unit.", "Stock actual",
                           "Sugerido pedir", "Valor stock", "Cobertura (días)",
-                          "Punto reorden", "Stock seguridad", "Lead time (d)"):
+                          "Mínimo (reorden)", "Máximo sugerido", "Stock seguridad", "Lead time (d)"):
                 celda.number_format = "#,##0"
 
     wb.save(ruta)

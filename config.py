@@ -41,8 +41,17 @@ DIAS_SALUDABLE = 90    # <= 3 meses               -> saludable; más = sobrestoc
 # ROP = demanda_diaria * lead_time + stock_seguridad
 # stock_seguridad = Z * sigma_diaria * sqrt(lead_time)   (King si hubiera sigma de lead time)
 Z_POR_CLASE = {"A": 2.05, "B": 1.65, "C": 1.28}   # nivel de servicio 98% / 95% / 90%
-LEAD_TIME_GLOBAL_DIAS = 7        # días de entrega del proveedor (SUPUESTO, no es dato real)
-LEAD_TIME_POR_RUBRO = {}         # override opcional por categoría, ej: {"FIERRO": 21}
+LEAD_TIME_GLOBAL_DIAS = 7        # días de entrega por defecto (SIMULADO, no es dato real)
+# Lead time SIMULADO por categoría (RUBRO): construcción local rápido; importados/eléctrico
+# más lento. Son supuestos ajustables hasta tener el lead time real por proveedor.
+LEAD_TIME_POR_RUBRO = {
+    "MATERIALES DE CONSTRUCCION": 5, "OBRA GRUESA": 5, "ESTRUCTURAS Y TECHOS": 7,
+    "REVESTIMIENTO": 7, "REVESTIMIENTOS": 7, "MADERA Y TABLERO": 6,
+    "PINTURA": 10, "PINTURAS": 10, "GASFITERIA": 8, "BAÑO Y COCINA": 12,
+    "ELECTRICIDAD": 12, "ILUMINACION": 14, "HERRAMIENTAS": 15, "HER. Y FERRETERIA": 12,
+    "FERRETERIA": 10, "JARDIN": 10, "CLIMATIZACION": 14, "HOGAR Y TERMINACIONES": 10,
+    "OUTDOOR Y CAMPING": 14, "ASEO": 8, "ORGANIZACIÓN": 10, "INSUMOS": 7,
+}
 SIGMA_LEAD_TIME_DIAS = 0         # variabilidad del lead time (0 = sin datos de proveedor)
 SIGMA_FLOOR_FRAC = 0.5           # piso de la σ diaria como fracción de la demanda diaria
 SS_MAX_DIAS = 45                 # techo del stock de seguridad (en días de demanda)
