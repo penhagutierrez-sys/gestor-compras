@@ -57,39 +57,33 @@ def cargar_crudos(progreso=None):
     return df, stock_raw, prov, maestro
 
 
-def clasificar(df, stock_raw, sucursal=None, maestro=None, sim_stock=True, progreso=None):
+def clasificar(df, stock_raw, sucursal=None, maestro=None, progreso=None):
     """
-    Clasifica la salud de inventario. La sucursal aplica la PROPORCIÓN fija a ventas e
-    inventario (simulación). sim_stock=False usa el stock REAL por sucursal (lo usan los
-    Traslados, donde importan los desbalances reales). 'maestro' (80/20) define el ABC y
-    el nivel de demanda, y reduce el universo a sus SKU.
+    Clasifica la salud de inventario. Las VENTAS se reparten por PROPORCION_VENTAS (el
+    80/20 no viene por sucursal); el INVENTARIO usa el STOCK REAL por sucursal (tiene
+    variación por producto -> ventas ≠ inventario, traslados con sentido). 'maestro'
+    (80/20) define ABC, nivel de demanda y reduce el universo a sus SKU.
     """
     def avisar(msg):
         if progreso:
             progreso(msg)
 
-    # La sucursal aplica la PROPORCIÓN fija a ventas e inventario (el 80/20 no viene por sucursal).
-    prop = float(config.SUCURSAL_PROPORCION.get(int(sucursal), 0.0)) if sucursal else 1.0
+    prop_v = float(config.PROPORCION_VENTAS.get(int(sucursal), 0.0)) if sucursal else 1.0
 
     avisar("Analizando (ABC / XYZ / pronóstico)...")
-    res = an.analizar(df)                      # toda la base; la sucursal entra por proporción
+    res = an.analizar(df)                      # toda la base; la demanda entra por proporción
     if maestro is not None:
-        res = _aplicar_maestro(res, maestro, prop)
-    elif prop != 1.0:
-        res = res.assign(PRONOSTICO_MENSUAL=res["PRONOSTICO_MENSUAL"] * prop,
-                         SIGMA_MENSUAL=res["SIGMA_MENSUAL"] * prop)
+        res = _aplicar_maestro(res, maestro, prop_v)
+    elif prop_v != 1.0:
+        res = res.assign(PRONOSTICO_MENSUAL=res["PRONOSTICO_MENSUAL"] * prop_v,
+                         SIGMA_MENSUAL=res["SIGMA_MENSUAL"] * prop_v)
 
     stock = None
     if stock_raw is not None:
         avisar("Cruzando stock...")
-        if sim_stock:                          # inventario SIMULADO = total * proporción
-            sn = cd.agregar_stock(stock_raw)
-            if prop != 1.0:
-                sn = sn.assign(STOCK_ACTUAL=sn["STOCK_ACTUAL"] * prop)
-        else:                                  # stock REAL por sucursal (para traslados)
-            sr = stock_raw[stock_raw["SUCURSAL"] == str(sucursal)] if sucursal else stock_raw
-            sn = cd.agregar_stock(sr)
-        stock = cd.stock_por_codigo(sn, res)
+        # Inventario = stock REAL por sucursal (variación por producto -> traslados con sentido).
+        sr = stock_raw[stock_raw["SUCURSAL"] == str(sucursal)] if sucursal else stock_raw
+        stock = cd.stock_por_codigo(cd.agregar_stock(sr), res)
 
     avisar("Clasificando salud de inventario...")
     return oc.clasificar_inventario(res, stock=stock)

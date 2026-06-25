@@ -93,9 +93,10 @@ RUTA_CATALOGO_PESOS = Path(__file__).parent / "data" / "catalogo_pesos.csv"
 RUTA_MAESTRO_8020 = Path(__file__).parent / "data" / "80-20.xlsx"
 HOJA_MAESTRO_8020 = "BD"
 MAX_SKU = 600   # la app trabaja solo con los top-N SKU del 80/20 (los relevantes)
-# Como el 80/20 no viene separado por sucursal, la demanda se reparte con esta
-# PROPORCIÓN fija por sucursal (código -> fracción; suma = 1.0).
-SUCURSAL_PROPORCION = {
+# Las VENTAS se reparten con esta proporción fija (el 80/20 no viene por sucursal).
+# El INVENTARIO usa el STOCK REAL por sucursal (del export) — tiene variación por
+# producto, así ventas ≠ inventario de verdad y los traslados tienen sentido.
+PROPORCION_VENTAS = {
     101: 0.22,   # Casa Matriz Arauco
     201: 0.22,   # Sucursal Cañete
     301: 0.20,   # Sucursal Curanilahue
